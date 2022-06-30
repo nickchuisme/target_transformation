@@ -49,6 +49,7 @@ class BestModelSearch:
         this = pd.Series(scores, index=scores.keys(), name=model_name)
         self.metric_info = pd.concat([self.metric_info, this], axis=1)
 
+    # generate transformed Xt and yt from traget y
     def gen_feature_data(self, series, lags=2, horizon=1, transform_threshold=0.005):
         data = []
         data_transformed = []
@@ -74,7 +75,7 @@ class BestModelSearch:
 
 
     def gen_X_y(self, series, lag, threshold, test_len):
-        # generate expanding window
+        # generate expanding window validation set
         for i in range(test_len):
             end_idx = -1 * test_len + i + 1
             if end_idx == 0:
@@ -95,6 +96,9 @@ class BestModelSearch:
 
 
     def retrain(self, series, best_data):
+        # series: entire time series
+        # best_data: the parameters of best_validated model
+
         logger.info(f'Worker {self.worker_id}| is retraining {self.dataset_name}')
 
         for model_name, model_value in best_data.items():
@@ -128,6 +132,11 @@ class BestModelSearch:
 
 
     def tuning(self, model_name, series, threshold_lag, scoring='symmetric_mean_absolute_percentage_error'):
+        # model_name: current model's name
+        # series: train_y
+        # threshold_lag: combination of thresholds and lags
+        # scoring: error measure
+
 
         p_metric = Performance_metrics()
 
@@ -200,6 +209,9 @@ class BestModelSearch:
         return best_data
 
     def hyperparameter_tuning(self, series, threshold_lag):
+        # series: entire time series
+        # threshold_lag: combination of thresholds and lags
+
         # save training set and testing set information
         self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
         self.record.insert(name=self.dataset_name, series=self.dataset)
@@ -222,6 +234,7 @@ def work(dataset_item):
                     hyper_threshold_lag.append((l, h, round(t, 4)))
         return hyper_threshold_lag
 
+    # time series name and value
     name, dataset = dataset_item
 
     try:
@@ -239,7 +252,7 @@ def work(dataset_item):
         # generate combinations of lags and thresholds
         threshold_lag = gen_hyperparams(lags=range(1, 4), horizons=[1], thresholds=thresholds)
 
-        # modl validation and get best model of each model
+        # model validation and get best model of each model
         best_data = bms.hyperparameter_tuning(dataset, threshold_lag)
         # refit and retrain model
         bms.retrain(series=dataset, best_data=best_data)
