@@ -3,11 +3,14 @@
 1. Run the experiment by applying transformation on the target series to anticipate improving the forecasting performance.
 2. Analyse the experiment results from a saved JSON file.
 
-### Workflow
-Execution:
+### Execution:
 ```bash
 python3 model_selection.py
 ```
+
+### Workflow
+![plot](http://processon.com/chart_image/62bd97fde0b34d075b187c0b.png)
+
 
 1. <code>model_selection.py</code> validates the model with the combinations of lags, thresholds and model parameters. Then, select each best-validated model to fit the training data and calculate the model's performance by <code>sMAPE</code> measure.
 
