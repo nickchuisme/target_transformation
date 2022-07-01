@@ -9,7 +9,7 @@ python3 model_selection.py
 ```
 
 ### Workflow
-<img src="https://imgur.com/Dnp83KV.png" width="900" height="400">
+<img src="https://imgur.com/NiWCgUn.png" width="900" height="400">
 
 
 1. <code>model_selection.py</code> validates the model with the combinations of lags, thresholds and model parameters. Then, select each best-validated model to fit the training data and calculate the model's performance by <code>sMAPE</code> measure.
