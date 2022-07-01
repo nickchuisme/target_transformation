@@ -2,9 +2,11 @@ import numpy as np
 from sklearn import (ensemble, gaussian_process, linear_model, neighbors,
                      neural_network, svm)
 from sklearn.gaussian_process.kernels import DotProduct, WhiteKernel
-from statsmodels.tsa.api import ExponentialSmoothing, Holt, SimpleExpSmoothing
+from statsmodels.tsa.api import ExponentialSmoothing, Holt
 from statsmodels.tsa.exponential_smoothing.ets import ETSModel
 from xgboost import XGBRegressor
+from sktime.forecasting.ets import AutoETS
+from sktime.forecasting.arima import AutoARIMA
 
 regression_models = {
 
@@ -16,6 +18,7 @@ regression_models = {
 
     # 'SGDRegressor': linear_model.SGDRegressor,
     # 'SVR': svm.SVR,
+    'LinearSVR': svm.LinearSVR,
     # 'ARDRegression': linear_model.ARDRegression,
     # 'BayesianRidge': linear_model.BayesianRidge,
     'KNeighborsRegressor': neighbors.KNeighborsRegressor,
@@ -36,8 +39,10 @@ regression_models = {
 forecasting_models = {
     # 'ExponentialSmoothing': ExponentialSmoothing,
     # 'SimpleExpSmoothing': SimpleExpSmoothing,
-    'Holt': Holt,
+    # 'Holt': Holt,
     # 'ETS': ETSModel,
+    'AutoARIMA': AutoARIMA,
+    'AutoETS': AutoETS,
 }
 
 # hyperparameters for tuning
@@ -55,7 +60,7 @@ params = {
         'normalize': [False],
     },
     'ElasticNet': {
-        'alpha': np.arange(0.1, 1, 0.1),
+        'alpha': [0.01, 0.1, 0.5, 1, 10, 100],
         'l1_ratio': np.arange(0.1, 1.1, 0.1),
         # 'random_state': [0],
     },
@@ -69,6 +74,10 @@ params = {
     'SVR': {
         'kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'],
         'C': np.arange(0.1, 1.1, 0.1),
+    },
+    'LinearSVR': {
+        'epsilon': np.arange(0, 1.2, 0.2),
+        'C': range(1, 25, 5),
     },
     'ARDRegression': {
         'alpha_1': np.arange(1e-6, 1e-1, 1e-2),
@@ -88,33 +97,33 @@ params = {
     },
 
     'XGBRegressor':{
-        'n_estimators': [100, 300, 500],
+        'n_estimators': [10, 50, 100, 200],
         'booster': ['gbtree', 'gblinear', 'dart'],
     },
     'AdaBoostRegressor': {
         'base_estimator': [ensemble.ExtraTreesRegressor(), ensemble.RandomForestRegressor(), ensemble.GradientBoostingRegressor()],
-        'n_estimators': range(10, 500, 100),
+        'n_estimators': [10, 50, 100, 200],
         'loss': ['linear', 'square', 'exponential'],
     },
     'ExtraTreesRegressor': {
-        'n_estimators': range(10, 500, 100),
+        'n_estimators': [10, 50, 100, 200],
         # 'max_features': ['auto', 'sqrt', 'log2'],
         'ccp_alpha': np.arange(0, 1, 0.1),
     },
     'GradientBoostingRegressor': {
-        'n_estimators': range(10, 500, 100),
+        'n_estimators': [10, 50, 100, 200],
         # 'max_features': ['auto', 'sqrt', 'log2'],
         'ccp_alpha': np.arange(0, 1, 0.1),
     },
     'RandomForestRegressor': {
-        'n_estimators': range(10, 500, 100),
+        'n_estimators': [10, 50, 100, 200],
         # 'max_features': ['auto', 'sqrt', 'log2'],
         'ccp_alpha': np.arange(0, 1, 0.1),
         'bootstrap': [False],
     },
 
     'MLPRegressor': {
-        'hidden_layer_sizes': [(50, 50, 50), (100, 50), (50, 50), (50, 25), (100,), (50,), (25,)],
+        'hidden_layer_sizes': [(i, ) for i in range(1, 10)],
         # 'alpha': np.arange(1e-6, 1e-1, 1e-2),
         'activation': ['logistic', 'relu', 'tanh'],
         # 'solver': ['lbfgs', 'adam'],
@@ -139,5 +148,12 @@ params = {
         'damped_trend': [True, False],
         'seasonal': ['add', 'mul'],
         'seasonal_periods': [12],
+    },
+    'AutoARIMA': {
+        'sp': [12],
+    },
+    'AutoETS': {
+        'auto': [True],
+        'sp': [12],
     },
 }
