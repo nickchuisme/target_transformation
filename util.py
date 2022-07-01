@@ -40,9 +40,8 @@ def load_m3_data(min_length=100, n_set=5):
     logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
     return datasets
 
-def init_json():
-    if os.path.exists('./results.json.tmp'):
-        os.remove('./results.json.tmp')
+def init_json(file_path='./results.json.tmp'):
+    open(file_path, 'w').close()
 
 def confirm_json():
     if not os.path.isdir('./json_data'):
@@ -53,6 +52,7 @@ def confirm_json():
     if os.path.exists(target_path):
         os.remove(target_path)
     os.rename('./results.json.tmp', target_path)
+    logger.info(f'Done! {target_path} is saved')
 
 
 
@@ -132,7 +132,6 @@ class Records:
         with open('./results.json.tmp', 'a') as file:
             try:
                 file.write(json.dumps(self.record))
-                logger.info(f'Json write {name} data')
             except Exception as e:
                 logger.warn(f'Cannot save ndarray into JSON, error:{e}')
             file.write('\n')
