@@ -118,8 +118,12 @@ class BestModelSearch:
                     model.fit(train_Xt, train_yt)
                     prediction = model.predict(test_Xt)
                 elif model_name in settings.forecasting_models:
-                    model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
-                    prediction = model.forecast(1)
+                    if model_name in ['AutoARIMA', 'AutoETS']:
+                        model = self.forecasting_models[model_name](**param).fit(train_yt)
+                        prediction = model.predict(fh=[1])
+                    else:
+                        model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
+                        prediction = model.forecast(1)
                 predictions.append(prediction.ravel()[0])
 
             predictions = np.array(predictions, dtype=float)
@@ -130,13 +134,13 @@ class BestModelSearch:
             self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), lags=lag, horizon=horizon, threshold=threshold)
             self.save_scores_info(scores=p_metric.scores, model_name=model_name)
 
+        # logger.info(f'Worker {self.worker_id}| finished {self.dataset_name} retraining')
 
     def tuning(self, model_name, series, threshold_lag, scoring='symmetric_mean_absolute_percentage_error'):
         # model_name: current model's name
         # series: train_y
         # threshold_lag: combination of thresholds and lags
         # scoring: error measure
-
 
         p_metric = Performance_metrics()
 
@@ -183,8 +187,12 @@ class BestModelSearch:
                         train_Xt, train_yt, test_Xt, test_y = item
 
                         # forecasting model has different fitting targets and predicting method
-                        model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
-                        pred = model.forecast(1)
+                        if model_name in ['AutoARIMA', 'AutoETS']:
+                            model = self.forecasting_models[model_name](**param).fit(train_yt)
+                            pred = model.predict(fh=[1])
+                        else:
+                            model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
+                            pred = model.forecast(1)
                         true = test_y
 
                         score = p_metric.one_measure(scoring=scoring, true_y=true, pred_y=pred)
@@ -204,7 +212,10 @@ class BestModelSearch:
         if model_name in self.regression_models:
             best_data['best_model'].fit(Xt, yt)
         elif model_name in self.forecasting_models:
-            best_data['best_model'] = self.forecasting_models[model_name](endog=yt, **best_data['best_param']).fit()
+            if model_name in ['AutoARIMA', 'AutoETS']:
+                model = self.forecasting_models[model_name](**param).fit(yt)
+            else:
+                best_data['best_model'] = self.forecasting_models[model_name](endog=yt, **best_data['best_param']).fit()
 
         return best_data
 
@@ -222,7 +233,6 @@ class BestModelSearch:
             # use training part to validate model
             best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag)
         return best_data
-
 
 
 def work(dataset_item):
@@ -249,13 +259,17 @@ def work(dataset_item):
 
     # hyperparameter tuning with/without transformation
     for thresholds in [[0.], np.arange(0.04, 0.16, 0.04)]:
-        # generate combinations of lags and thresholds
-        threshold_lag = gen_hyperparams(lags=range(1, 4), horizons=[1], thresholds=thresholds)
+        try:
+            # generate combinations of lags and thresholds
+            threshold_lag = gen_hyperparams(lags=range(1, 5), horizons=[1], thresholds=thresholds)
 
-        # model validation and get best model of each model
-        best_data = bms.hyperparameter_tuning(dataset, threshold_lag)
-        # refit and retrain model
-        bms.retrain(series=dataset, best_data=best_data)
+            # model validation and get best model of each model
+            best_data = bms.hyperparameter_tuning(dataset, threshold_lag)
+            # refit and retrain model
+            bms.retrain(series=dataset, best_data=best_data)
+        except Exception as e:
+            logger.error(e)
+    logger.info(f'Worker {worker_id}| is saving {name}\'s data')
     bms.record.save_json(name)
 
 
@@ -267,7 +281,7 @@ if __name__ == '__main__':
     # load m3 time series
     # min_length: the minimum length of time series
     # n_set: the number of different time series
-    m3_datasets = load_m3_data(min_length=80, n_set=2)
+    m3_datasets = load_m3_data(min_length=80, n_set=4)
 
     pool = multiprocessing.Pool(2)
     # work(): main function
