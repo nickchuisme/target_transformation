@@ -1,3 +1,4 @@
+import argparse
 import multiprocessing
 import os
 import sys
@@ -9,12 +10,8 @@ from sklearn.model_selection import ParameterGrid, train_test_split
 
 import settings
 from transformation import Transformation
-from util import (Performance_metrics, Records, confirm_json, init_json,
-                  load_m3_data, logger)
-
-if not sys.warnoptions:
-    warnings.simplefilter("ignore")
-    os.environ["PYTHONWARNINGS"] = "ignore"
+from utils import (Performance_metrics, Records, confirm_json, init_json,
+                   load_m3_data, load_m4_data, logger)
 
 
 class BestModelSearch:
@@ -235,8 +232,22 @@ class BestModelSearch:
         return best_data
 
 
-def work(dataset_item):
-    def gen_hyperparams(lags, horizons, thresholds):
+class MultiWork:
+
+    def __init__(self, dataset, lags=range(1, 4), thresholds=np.arange(0.04, 0.16, 0.04), worker_num=1, warning_suppressing=False):
+        self.dataset = list(dataset.items())
+        self.worker_num = worker_num
+        self.lags = lags
+        self.thresholds = thresholds
+
+        self.warning_suppressing(ignore=warning_suppressing)
+
+    def warning_suppressing(self, ignore=True):
+        if not sys.warnoptions and ignore:
+            warnings.simplefilter("ignore")
+            os.environ["PYTHONWARNINGS"] = "ignore"
+
+    def gen_hyperparams(self, lags, horizons, thresholds):
         hyper_threshold_lag = []
         for l in lags:
             for h in horizons:
@@ -244,52 +255,88 @@ def work(dataset_item):
                     hyper_threshold_lag.append((l, h, round(t, 4)))
         return hyper_threshold_lag
 
-    # time series name and value
-    name, dataset = dataset_item
+    def work(self, dataset_item):
 
-    try:
-        worker_id = multiprocessing.current_process()._identity[0]
-    except:
-        worker_id = 1
-    logger.info(f'Worker {worker_id}| is processing {name}')
+        # time series name and value
+        name, dataset = dataset_item
 
-    # dataset = list(range(1, 81))
-
-    bms = BestModelSearch(dataset_name=name, dataset=dataset, test_size=10, worker_id=worker_id)
-
-    # hyperparameter tuning with/without transformation
-    for thresholds in [[0.], np.arange(0.04, 0.16, 0.04)]:
         try:
-            # generate combinations of lags and thresholds
-            threshold_lag = gen_hyperparams(lags=range(1, 5), horizons=[1], thresholds=thresholds)
+            worker_id = multiprocessing.current_process()._identity[0]
+        except:
+            worker_id = 1
+        logger.info(f'Worker {worker_id}| is processing {name}({len(dataset)})')
 
-            # model validation and get best model of each model
-            best_data = bms.hyperparameter_tuning(dataset, threshold_lag)
-            # refit and retrain model
-            bms.retrain(series=dataset, best_data=best_data)
-        except Exception as e:
-            logger.error(e)
-    logger.info(f'Worker {worker_id}| is saving {name}\'s data')
-    bms.record.save_json(name)
+        bms = BestModelSearch(dataset_name=name, dataset=dataset, test_size=10, worker_id=worker_id)
+        # hyperparameter tuning with/without transformation
+        for thresholds in [[0.], self.thresholds]:
+            try:
+                # generate combinations of lags and thresholds
+                threshold_lag = self.gen_hyperparams(lags=self.lags, horizons=[1], thresholds=thresholds)
+
+                # model validation and get best model of each model
+                best_data = bms.hyperparameter_tuning(dataset, threshold_lag)
+                # refit and retrain model
+                bms.retrain(series=dataset, best_data=best_data)
+            except Exception as e:
+                logger.error(e)
+
+        logger.info(f'Worker {worker_id}| is saving {name}\'s data')
+        bms.record.save_json(name)
+
+    def set_workers(self):
+        cpus = multiprocessing.cpu_count() - 1
+        self.worker_num = min(cpus, self.worker_num, len(self.dataset))
+        if self.worker_num == 0:
+            self.worker_num = 1
+        logger.info(f'CPUs count: {cpus+1} ==> workers: {self.worker_num}')
+
+    def run(self):
+        self.set_workers()
+        init_json()
+
+        if self.worker_num == 1:
+            for data in self.dataset:
+                self.work(data)
+        else:
+            pool = multiprocessing.Pool(self.worker_num)
+            pool.map_async(self.work, self.dataset)
+            pool.close()
+            pool.join()
+
+        # save json file
+        confirm_json()
 
 
 if __name__ == '__main__':
-    init_json()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--thresholds", help="thresholds excludes zero", nargs="*", type=float)
+    parser.add_argument("--threshold_step", help="step of thresholds", type=float, default=0.03)
+    parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
+    parser.add_argument("--worker", help="number of worker", type=int, default=30)
+    parser.add_argument("--data_num", help="number of data", type=int, default=4)
+    parser.add_argument("--data_length", help="minimum length of data", type=int, default=80)
+    parser.add_argument("--test", help="test setting", action="store_true")
+    args = parser.parse_args()
+
+    if args.test:
+        args.lags = [1, 3]
+        args.thresholds = np.arange(0.04, 0.12, 0.04)
+        args.worker = 2
+        ignore_warn = False
+        logger.info('[TEST MODE]')
+    else:
+        if not args.thresholds and args.threshold_step:
+            args.thresholds = np.arange(args.threshold_step, 11 * args.threshold_step, args.threshold_step)
+        ignore_warn = True
 
     logger.info(f'Models: {list(settings.regression_models.keys())+list(settings.forecasting_models.keys())}')
+    logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}')
 
-    # load m3 time series
+    # load time series
     # min_length: the minimum length of time series
     # n_set: the number of different time series
-    m3_datasets = load_m3_data(min_length=80, n_set=4)
+    # datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
+    datasets = load_m4_data(min_length=args.data_length, n_set=args.data_num, freq='Hourly')
 
-    pool = multiprocessing.Pool(2)
-    # work(): main function
-    pool.map_async(work, list(m3_datasets.items()))
-    pool.close()
-    pool.join()
-
-    ### work(list(m3_datasets.items())[0])
-
-    # save json file
-    confirm_json()
+    mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, worker_num=args.worker, warning_suppressing=ignore_warn)
+    mw.run()
