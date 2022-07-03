@@ -4,8 +4,17 @@
 2. Analyse the experiment results from a saved JSON file.
 
 ### Execution:
+for testing:
+- lags: 1, 3
+- thresholds: 0.04, 0.08
 ```bash
-python3 model_selection.py
+./run_test.sh
+```
+execute entire experiment:
+- lags: 1, 2, 3, 4, 5
+- thresholds: np.arange(0.03, 0.33, 0.03)
+```bash
+./run.sh
 ```
 
 ### Workflow
@@ -22,7 +31,7 @@ python3 model_selection.py
 
 - <code>settings.py</code>: this file saves the available models and theirs parameters. When validating a model, the main function calls the model parameters from this file and creates possible combinations.
 
-- <code>util.py</code>: this file gives some toolkits.
+- <code>utils.py</code>: this file gives some toolkits.
   1. <code>Performance_metrics</code> is able to calculate the performance with a set of error measures or a specific measure.
   2. <code>Records</code> saves each time-series information into a JSON file
 
