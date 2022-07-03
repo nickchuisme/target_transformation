@@ -40,6 +40,35 @@ def load_m3_data(min_length=100, n_set=5):
     logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
     return datasets
 
+def load_m4_data(min_length=300, n_set=5, freq='Hourly'):
+    logger.info('Loading M4 dataset')
+    datasets = dict()
+    selected_datasets = dict()
+
+    for train_test in ['Train', 'Test']:
+        file_name = f'./Dataset/{train_test}/{freq.lower().capitalize()}-{train_test.lower()}.csv'
+        with open(file_name, 'r') as file:
+            for line in file.readlines()[1:]:
+                line = line.strip().replace('"', '').split(',')
+                dataset_name = line.pop(0)
+                line = [float(v) for v in line if v]
+
+                if train_test == 'Train':
+                    datasets[dataset_name] = np.array(line)
+                else:
+                    entire_series = np.concatenate((datasets[dataset_name], np.array(line)), axis=None)
+                    datasets[dataset_name] = entire_series
+
+                    if len(selected_datasets) < n_set:
+                        if entire_series.size > min_length:
+                            selected_datasets[dataset_name] = entire_series
+                    else:
+                        logger.info(f'Get {len(selected_datasets)} datasets with length > {min_length}')
+                        return selected_datasets
+
+    logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
+    return datasets
+
 def init_json(file_path='./results.json.tmp'):
     open(file_path, 'w').close()
 
