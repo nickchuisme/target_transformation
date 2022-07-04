@@ -9,7 +9,7 @@ from sklearn import metrics
 from tqdm import tqdm
 
 logger = logging.getLogger()
-formatter = logging.Formatter('[%(asctime)s %(levelname)-8s] %(message)s', datefmt='%Y%m%d %H:%M:%S')
+formatter = logging.Formatter('[%(asctime)s %(levelname)-5s] %(message)s', datefmt='%Y%m%d %H:%M:%S')
 logger.setLevel(logging.DEBUG)
 
 stream_handler = logging.StreamHandler()
@@ -95,7 +95,7 @@ class Performance_metrics:
             # 'explained_variance_score': metrics.explained_variance_score,
             # 'max_error': metrics.max_error,
             'mean_absolute_error': metrics.mean_absolute_error,
-            # 'mean_squared_error': metrics.mean_squared_error,
+            'mean_squared_error': metrics.mean_squared_error,
             'root_mean_squared_error': self.root_mean_square_error,
             'r2': metrics.r2_score,
             'mean_absolute_percentage_error': metrics.mean_absolute_percentage_error,
@@ -106,7 +106,7 @@ class Performance_metrics:
     def one_measure(self, scoring, true_y, pred_y):
         return self.estimators[scoring](true_y, pred_y)
 
-    def measuring(self, model_name):
+    def measuring(self, model_name, dataset_name):
         for estimator in self.estimators.keys():
             try:
                 score = self.estimators[estimator](self.true_y, self.predict_y)
@@ -115,10 +115,10 @@ class Performance_metrics:
                 logger.warn(f'({model_name}:{estimator}): {e}')
                 self.scores[estimator] = '-'
 
-        self.print_score(model_name)
+        self.print_score(model_name, dataset_name)
 
-    def print_score(self, model_name, estimator=None):
-        logger.debug('--'*12+model_name+'--'*12)
+    def print_score(self, model_name, dataset_name, estimator=None):
+        logger.debug('--'*12+model_name+'('+dataset_name+')'+'--'*12)
         if estimator:
             logger.debug(f'{estimator}: {self.scores[estimator]}')
         else:
