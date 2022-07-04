@@ -31,7 +31,7 @@ regression_models = {
 
     'MLPRegressor': neural_network.MLPRegressor,
 
-    # 'GaussianProcessRegressor': gaussian_process.GaussianProcessRegressor,
+    'GaussianProcessRegressor': gaussian_process.GaussianProcessRegressor,
 
 
 }
@@ -60,8 +60,10 @@ params = {
         'normalize': [False],
     },
     'ElasticNet': {
-        'alpha': [0.01, 0.1, 0.5, 1, 10, 100],
+        'alpha': [0.01, 0.1, 0.5, 1],
+        # 'alpha': [1],
         'l1_ratio': np.arange(0.1, 1.1, 0.1),
+        'tol': [0.0001, 0.001, 0.01],
         # 'random_state': [0],
     },
 
@@ -76,7 +78,7 @@ params = {
         'C': np.arange(0.1, 1.1, 0.1),
     },
     'LinearSVR': {
-        'epsilon': np.arange(0, 1.2, 0.2),
+        'epsilon': np.arange(0., 1., 0.4),
         'C': range(1, 25, 5),
     },
     'ARDRegression': {
@@ -92,7 +94,7 @@ params = {
         'lambda_2': np.arange(1e-6, 1e-1, 1e-2),
     },
     'KNeighborsRegressor': {
-        'n_neighbors': [2, 4, 6, 8, 12, 16, 20],
+        'n_neighbors': [2, 4, 8, 12, 16, 20],
         'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute'],
     },
 
@@ -124,16 +126,19 @@ params = {
 
     'MLPRegressor': {
         'hidden_layer_sizes': [(i, ) for i in range(1, 10)],
-        # 'alpha': np.arange(1e-6, 1e-1, 1e-2),
-        'activation': ['logistic', 'relu', 'tanh'],
-        # 'solver': ['lbfgs', 'adam'],
+        # 'hidden_layer_sizes': [(10, 10), (10, 10, 10,), (10, 20), (10,), (20,)],
+        'alpha': [0, 0.001, 0.01, 0.1],
+        'activation': ['logistic', 'relu', 'tanh', 'identity'],
+        'solver': ['lbfgs', 'adam', 'sgd'],
+        # 'random_state': [0, 1],
         'shuffle': [False],
-        'max_iter': [600],
-        'early_stopping': [True],
+        'max_iter': [500],
+        # 'early_stopping': [True],
     },
 
     'GaussianProcessRegressor': {
-        'kernel': [DotProduct() + WhiteKernel(), None],
+        # 'kernel': [DotProduct() + WhiteKernel(), None],
+        'n_restarts_optimizer': [0, 2, 4, 6, 8],
     },
 
     
@@ -150,10 +155,12 @@ params = {
         'seasonal_periods': [12],
     },
     'AutoARIMA': {
-        'sp': [12],
+        # 'sp': [12], # monthly
+        'sp': [7], # daily
     },
     'AutoETS': {
         'auto': [True],
-        'sp': [12],
+        # 'sp': [12], # monthly
+        'sp': [7], # daily
     },
 }
