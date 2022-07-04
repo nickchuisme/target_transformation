@@ -3,6 +3,8 @@ import multiprocessing
 import os
 import sys
 import warnings
+from tabulate import tabulate
+import time
 
 import numpy as np
 import pandas as pd
@@ -51,22 +53,26 @@ class BestModelSearch:
         data = []
         data_transformed = []
 
-        if transform_threshold:
-            # if threshold > 0, do transformation
-            series_transformed = self.transform.dwt(series, threshold=transform_threshold)
-        else:
-            series_transformed = series
+        try:
+            if transform_threshold:
+                # if threshold > 0, do transformation
+                series_transformed = self.transform.dwt(series, threshold=transform_threshold)
+            else:
+                series_transformed = series
+            for i in range(len(series) - lags - horizon + 1):
+                end_idx = i + lags + horizon
+                data.append(series[i: end_idx])
+                data_transformed.append(series_transformed[i: end_idx])
 
-        for i in range(len(series) - lags - horizon + 1):
-            end_idx = i + lags + horizon
-            data.append(series[i: end_idx])
-            data_transformed.append(series_transformed[i: end_idx])
+            X = np.array(data)[:, :lags]
+            y = np.array(data)[:, lags:]
 
-        X = np.array(data)[:, :lags]
-        y = np.array(data)[:, lags:]
-
-        Xt = np.array(data_transformed)[:, :lags]
-        yt = np.array(data_transformed)[:, lags:]
+            Xt = np.array(data_transformed)[:, :lags]
+            yt = np.array(data_transformed)[:, lags:]
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            logger.error(f'(line:{exc_tb.tb_lineno}) {e}')
+            exit()
 
         return X, y, Xt, yt
 
@@ -126,7 +132,7 @@ class BestModelSearch:
             predictions = np.array(predictions, dtype=float)
 
             p_metric = Performance_metrics(true_y=self.test_y, predict_y=predictions)
-            p_metric.measuring(model_name=model_name)
+            p_metric.measuring(model_name=model_name, dataset_name=self.dataset_name)
             transformed = 'transformed' if threshold > 0 else 'untransformed'
             self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), lags=lag, horizon=horizon, threshold=threshold)
             self.save_scores_info(scores=p_metric.scores, model_name=model_name)
@@ -151,7 +157,7 @@ class BestModelSearch:
             'best_horizon': None,
         }
 
-        best_score = 10
+        best_score = 10000000
 
         # combinations of model's parameters
         params = list(ParameterGrid(self.params[model_name]))
@@ -163,37 +169,42 @@ class BestModelSearch:
             for param in params:
                 scores = []
 
-                # loop combinations of lags, thresholds and model's parameters
-                if model_name in self.regression_models:
-                    # generate cross validation data
-                    for item in self.gen_X_y(series, lag, threshold, test_len):
-                        train_Xt, train_yt, test_Xt, test_y = item
+                try:
+                    # loop combinations of lags, thresholds and model's parameters
+                    if model_name in self.regression_models:
+                        # generate cross validation data
+                        for item in self.gen_X_y(series, lag, threshold, test_len):
+                            train_Xt, train_yt, test_Xt, test_y = item
 
-                        # fit model and calculate the score
-                        model = self.regression_models[model_name]().set_params(**param)
-                        model.fit(train_Xt, train_yt.ravel())
-                        pred = model.predict(test_Xt)
-                        true = test_y
+                            # fit model and calculate the score
+                            model = self.regression_models[model_name]().set_params(**param)
+                            model.fit(train_Xt, train_yt.ravel())
+                            pred = model.predict(test_Xt)
+                            true = test_y
 
-                        score = p_metric.one_measure(scoring=scoring, true_y=true, pred_y=pred)
-                        scores.append(score)
+                            score = p_metric.one_measure(scoring=scoring, true_y=true, pred_y=pred)
+                            scores.append(score)
 
-                elif model_name in self.forecasting_models:
+                    elif model_name in self.forecasting_models:
 
-                    for item in self.gen_X_y(series, lag, threshold, test_len):
-                        train_Xt, train_yt, test_Xt, test_y = item
+                        for item in self.gen_X_y(series, lag, threshold, test_len):
+                            train_Xt, train_yt, test_Xt, test_y = item
 
-                        # forecasting model has different fitting targets and predicting method
-                        if model_name in ['AutoARIMA', 'AutoETS']:
-                            model = self.forecasting_models[model_name](**param).fit(train_yt)
-                            pred = model.predict(fh=[1])
-                        else:
-                            model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
-                            pred = model.forecast(1)
-                        true = test_y
+                            # forecasting model has different fitting targets and predicting method
+                            if model_name in ['AutoARIMA', 'AutoETS']:
+                                model = self.forecasting_models[model_name](**param).fit(train_yt)
+                                pred = model.predict(fh=[1])
+                            else:
+                                model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
+                                pred = model.forecast(1)
+                            true = test_y
 
-                        score = p_metric.one_measure(scoring=scoring, true_y=true, pred_y=pred)
-                        scores.append(score)
+                            score = p_metric.one_measure(scoring=scoring, true_y=true, pred_y=pred)
+                            scores.append(score)
+
+                except Exception as e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
 
                 # update best model's infomation
                 if np.mean(scores) < best_score:
@@ -203,16 +214,19 @@ class BestModelSearch:
                     best_data['best_lag'] = lag
                     best_data['best_threshold'] = threshold
 
-
-        # refit the validated model with the whole training set
-        _, _, Xt, yt = self.gen_feature_data(series, lags=best_data['best_lag'], transform_threshold=best_data['best_threshold'])
-        if model_name in self.regression_models:
-            best_data['best_model'].fit(Xt, yt)
-        elif model_name in self.forecasting_models:
-            if model_name in ['AutoARIMA', 'AutoETS']:
-                model = self.forecasting_models[model_name](**param).fit(yt)
-            else:
-                best_data['best_model'] = self.forecasting_models[model_name](endog=yt, **best_data['best_param']).fit()
+        try:
+            # refit the validated model with the whole training set
+            _, _, Xt, yt = self.gen_feature_data(series, lags=best_data['best_lag'], transform_threshold=best_data['best_threshold'])
+            if model_name in self.regression_models:
+                best_data['best_model'].fit(Xt, yt)
+            elif model_name in self.forecasting_models:
+                if model_name in ['AutoARIMA', 'AutoETS']:
+                    model = self.forecasting_models[model_name](**param).fit(yt)
+                else:
+                    best_data['best_model'] = self.forecasting_models[model_name](endog=yt, **best_data['best_param']).fit()
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
 
         return best_data
 
@@ -256,6 +270,7 @@ class MultiWork:
         return hyper_threshold_lag
 
     def work(self, dataset_item):
+        start = time.time()
 
         # time series name and value
         name, dataset = dataset_item
@@ -275,12 +290,16 @@ class MultiWork:
 
                 # model validation and get best model of each model
                 best_data = bms.hyperparameter_tuning(dataset, threshold_lag)
+
+                logger.debug(f"\n{tabulate(best_data, headers='keys', tablefmt='psql')}")
                 # refit and retrain model
                 bms.retrain(series=dataset, best_data=best_data)
             except Exception as e:
-                logger.error(e)
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                logger.error(f'(line:{exc_tb.tb_lineno}) {e}')
 
-        logger.info(f'Worker {worker_id}| is saving {name}\'s data')
+        end = time.time()
+        logger.info(f'Worker {worker_id}| is saving {name}\'s data, takes {(end-start):.2f} seconds.')
         bms.record.save_json(name)
 
     def set_workers(self):
@@ -322,7 +341,7 @@ if __name__ == '__main__':
         args.lags = [1, 3]
         args.thresholds = np.arange(0.04, 0.12, 0.04)
         args.worker = 2
-        ignore_warn = False
+        ignore_warn = True
         logger.info('[TEST MODE]')
     else:
         if not args.thresholds and args.threshold_step:
@@ -336,7 +355,7 @@ if __name__ == '__main__':
     # min_length: the minimum length of time series
     # n_set: the number of different time series
     # datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
-    datasets = load_m4_data(min_length=args.data_length, n_set=args.data_num, freq='Hourly')
+    datasets = load_m4_data(min_length=args.data_length, n_set=args.data_num, freq='Daily')
 
     mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, worker_num=args.worker, warning_suppressing=ignore_warn)
     mw.run()
