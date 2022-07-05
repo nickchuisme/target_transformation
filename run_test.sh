@@ -1,5 +1,5 @@
 #!/bin/bash
 
-python model_selection.py --test
+python3 model_selection.py --test
 
 echo "[[Finished!]]"
