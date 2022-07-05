@@ -27,11 +27,11 @@ regression_models = {
     # 'AdaBoostRegressor': ensemble.AdaBoostRegressor,
     # 'ExtraTreesRegressor': ensemble.ExtraTreesRegressor,
     # 'GradientBoostingRegressor': ensemble.GradientBoostingRegressor,
-    # 'RandomForestRegressor': ensemble.RandomForestRegressor,
+    'RandomForestRegressor': ensemble.RandomForestRegressor,
 
     'MLPRegressor': neural_network.MLPRegressor,
 
-    'GaussianProcessRegressor': gaussian_process.GaussianProcessRegressor,
+    # 'GaussianProcessRegressor': gaussian_process.GaussianProcessRegressor,
 
 
 }
@@ -41,7 +41,7 @@ forecasting_models = {
     # 'SimpleExpSmoothing': SimpleExpSmoothing,
     # 'Holt': Holt,
     # 'ETS': ETSModel,
-    'AutoARIMA': AutoARIMA,
+    # 'AutoARIMA': AutoARIMA,
     'AutoETS': AutoETS,
 }
 
@@ -125,8 +125,8 @@ params = {
     },
 
     'MLPRegressor': {
-        'hidden_layer_sizes': [(i, ) for i in range(1, 10)],
-        # 'hidden_layer_sizes': [(10, 10), (10, 10, 10,), (10, 20), (10,), (20,)],
+        # 'hidden_layer_sizes': [(i, ) for i in range(1, 10)],
+        'hidden_layer_sizes': [(10, 10), (10, 10, 10,), (10, 20), (10,), (20,)],
         'alpha': [0, 0.001, 0.01, 0.1],
         'activation': ['logistic', 'relu', 'tanh', 'identity'],
         'solver': ['lbfgs', 'adam', 'sgd'],
