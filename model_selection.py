@@ -4,7 +4,6 @@ import os
 import sys
 import time
 import warnings
-from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -313,15 +312,15 @@ class MultiWork:
         logger.info(f'Worker {worker_id}| is saving {name}\'s results, takes {(end-start):.2f} seconds.')
         bms.record.save_json(name)
 
-    def set_workers(self):
-        cpus = multiprocessing.cpu_count() - 1
+    def set_workers(self, leave_one=True):
+        cpus = multiprocessing.cpu_count() - 1 * leave_one
         self.worker_num = min(cpus, self.worker_num, len(self.dataset))
         if self.worker_num == 0:
             self.worker_num = 1
-        logger.info(f'CPUs count: {cpus+1} ==> workers: {self.worker_num}')
+        logger.info(f'CPUs count: {cpus+1*leave_one} ==> workers: {self.worker_num}')
 
     def run(self):
-        self.set_workers()
+        self.set_workers(leave_one=False)
         init_json()
 
         if self.worker_num == 1:
