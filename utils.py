@@ -9,7 +9,7 @@ from sklearn import metrics
 from tqdm import tqdm
 
 logger = logging.getLogger()
-formatter = logging.Formatter('[%(asctime)s %(levelname)-5s] %(message)s', datefmt='%Y%m%d %H:%M:%S')
+formatter = logging.Formatter('[%(asctime)s %(levelname)-7s] %(message)s', datefmt='%Y%m%d %H:%M:%S')
 logger.setLevel(logging.DEBUG)
 
 stream_handler = logging.StreamHandler()
@@ -24,7 +24,9 @@ logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
 logging.getLogger('matplotlib.font_manager').disabled = True
 
-
+# ---------------------------------------------
+# min_length: the minimum length of time series
+# n_set: the number of different time series
 def load_m3_data(min_length=100, n_set=5):
     datasets = dict()
     data = load_m3monthly()
@@ -40,7 +42,7 @@ def load_m3_data(min_length=100, n_set=5):
     logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
     return datasets
 
-def load_m4_data(min_length=300, n_set=5, freq='Hourly'):
+def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly'):
     logger.info('Loading M4 dataset')
     datasets = dict()
     selected_datasets = dict()
@@ -60,10 +62,10 @@ def load_m4_data(min_length=300, n_set=5, freq='Hourly'):
                     datasets[dataset_name] = entire_series
 
                     if len(selected_datasets) < n_set:
-                        if entire_series.size > min_length:
+                        if entire_series.size > min_length and entire_series.size < max_length:
                             selected_datasets[dataset_name] = entire_series
                     else:
-                        logger.info(f'Get {len(selected_datasets)} datasets with length > {min_length}')
+                        logger.info(f'Get {len(selected_datasets)} datasets ({min_length} < length < {max_length})')
                         return selected_datasets
 
     logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
@@ -82,7 +84,6 @@ def confirm_json():
         os.remove(target_path)
     os.rename('./results.json.tmp', target_path)
     logger.info(f'Done! {target_path} is saved')
-
 
 
 class Performance_metrics:
