@@ -61,7 +61,7 @@ class BestModelSearch:
                 series_transformed = series
 
             if regression_data:
-
+                # data for regression model is shorter because of the lag
                 for i in range(len(series) - lags - horizon + 1):
                     end_idx = i + lags + horizon
                     data.append(series[i: end_idx])
@@ -112,6 +112,7 @@ class BestModelSearch:
 
         try:
             if fit_model:
+                # fitting model
                 if model_name in settings.regression_models:
                     model = self.regression_models[model_name]().set_params(**param)
                     model.fit(train_Xt, train_yt)
@@ -120,15 +121,24 @@ class BestModelSearch:
                         model = self.forecasting_models[model_name](**param).fit(train_yt)
                     else:
                         model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
+            else:
+                # In the iteration without fitting, we still have to update the forecasting model's observation
+                if model_name in settings.forecasting_models:
+                    if model_name in ['AutoARIMA', 'AutoETS']:
+                        model.update(pd.Series(train_yt[-1], index=[len(train_yt) - 1]), update_params=True)
+                    else:
+                        # not every model from statsmodels can use append
+                        model.append(train_yt[-1], refit=False)
+
+            # predicting
             if model_name in settings.regression_models:
                 prediction = model.predict(test_Xt)
             elif model_name in settings.forecasting_models:
                 if model_name in ['AutoARIMA', 'AutoETS']:
-                    model.update(train_yt, update_params=False)
                     prediction = model.predict(fh=[horizon])
+                    prediction = prediction.values
                 else:
                     prediction = model.forecast(horizon)
-                    model.append(test_y, refit=False)
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
