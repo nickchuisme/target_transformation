@@ -105,43 +105,57 @@ class BestModelSearch:
 
             yield train_Xt, train_yt.ravel(), test_Xt, test_y.ravel(), i
 
-    def fit_predict(self, model_name, model, param, item, test_len, iteration=10, horizon=1):
+    def fit_predict(self, model_name, model, param, item, test_len, iteration=10, horizon=1, retrain_window=10):
         train_Xt, train_yt, test_Xt, test_y, idx = item
-        step_size = int(test_len / iteration)
-        fit_model = idx % step_size == 0
+        # step_size = int(test_len / iteration)
+        if test_len <= 10:
+            retrain_window = 1
+        elif test_len <= 50:
+             retrain_window = int(test_len / 5)
+        else:
+            retrain_window = 10
+
+        fit_model = idx % retrain_window == 0
 
         try:
-            if fit_model:
+            # first time fitting
+            if fit_model and idx == 0:
                 # fitting model
                 if model_name in settings.regression_models:
-                    model = self.regression_models[model_name]().set_params(**param)
+                    if model_name in ['GRU']:
+                        param.update({'feature_num': train_Xt.shape[1]})
+                    model = self.regression_models[model_name]()
+                    model.set_params(**param)
                     model.fit(train_Xt, train_yt)
                 elif model_name in settings.forecasting_models:
-                    if model_name in ['AutoARIMA', 'AutoETS']:
-                        model = self.forecasting_models[model_name](**param).fit(train_yt)
-                    else:
-                        model = self.forecasting_models[model_name](endog=train_yt, **param).fit()
+                    model = self.forecasting_models[model_name](**param).fit(train_yt)
+            # the others fitting
+            elif fit_model and idx != 0:
+                if model_name in settings.regression_models:
+                    if model_name in ['GRU']:
+                        train_Xt, train_yt = train_Xt[-1 * retrain_window:], train_yt[-1 * retrain_window:]
+                    model.fit(train_Xt, train_yt)
+                elif model_name in settings.forecasting_models:
+                    model.fit(train_yt)
+
             else:
                 # In the iteration without fitting, we still have to update the forecasting model's observation
                 if model_name in settings.forecasting_models:
-                    if model_name in ['AutoARIMA', 'AutoETS']:
-                        model.update(pd.Series(train_yt[-1], index=[len(train_yt) - 1]), update_params=True)
-                    else:
-                        # not every model from statsmodels can use append
-                        model.append(train_yt[-1], refit=False)
+                    model.update(pd.Series(train_yt[-1], index=[len(train_yt) - 1]), update_params=True)
 
             # predicting
             if model_name in settings.regression_models:
                 prediction = model.predict(test_Xt)
             elif model_name in settings.forecasting_models:
-                if model_name in ['AutoARIMA', 'AutoETS']:
-                    prediction = model.predict(fh=[horizon])
-                    prediction = prediction.values
-                else:
-                    prediction = model.forecast(horizon)
+                prediction = model.predict(fh=[horizon])
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
+
+        if isinstance(prediction, pd.Series):
+            prediction = prediction.values
+        if isinstance(prediction, (np.floating, float)):
+            return model, [prediction]
         return model, prediction
 
     # --------------------------------------------------
@@ -191,12 +205,11 @@ class BestModelSearch:
             'best_horizon': None,
         }
 
-        best_score = 10000000
+        best_score = np.inf
 
         # combinations of model's parameters
         params = list(ParameterGrid(self.params[model_name]))
         regression_data = model_name in self.regression_models
-        logger.debug(f'Policy_num({model_name}): {len(params) * len(threshold_lag)}')
 
         for lag, horizon, threshold in threshold_lag:
             for param in params:
@@ -229,13 +242,13 @@ class BestModelSearch:
             # refit the validated model with the whole training set
             _, _, Xt, yt = self.gen_feature_data(series, lags=best_data['best_lag'], transform_threshold=best_data['best_threshold'], regression_data=regression_data)
             if model_name in self.regression_models:
-                best_data['best_model'] = self.regression_models[model_name]().set_params(**best_data['best_param'])
-                best_data['best_model'].fit(Xt, yt)
+                if model_name in ['GRU']:
+                    best_data['best_param'].update({'feature_num': best_data['best_lag']})
+                best_data['best_model'] = self.regression_models[model_name]()
+                best_data['best_model'].set_params(**best_data['best_param'])
+                best_data['best_model'].fit(Xt, yt.ravel())
             elif model_name in self.forecasting_models:
-                if model_name in ['AutoARIMA', 'AutoETS']:
-                    best_data['best_model'] = self.forecasting_models[model_name](**best_data['best_param']).fit(yt)
-                else:
-                    best_data['best_model'] = self.forecasting_models[model_name](endog=yt, **best_data['best_param']).fit()
+                best_data['best_model'] = self.forecasting_models[model_name](**best_data['best_param']).fit(yt)
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
@@ -255,7 +268,7 @@ class BestModelSearch:
         best_data = dict()
         for model_name in self.tuning_models:
             # use training set to validate model
-            best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag)
+            best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag, scoring='mean_squared_error')
         return best_data
 
 
@@ -289,9 +302,9 @@ class MultiWork:
         name, dataset = dataset_item
 
         if len(dataset) > 100:
-            test_size = int(len(dataset) / 100) * 10
+            test_size = int(len(dataset) / 100) * 20
         else:
-            test_size = 10
+            test_size = 20
 
         try:
             worker_id = multiprocessing.current_process()._identity[0]
@@ -352,14 +365,14 @@ if __name__ == '__main__':
     parser.add_argument("--threshold_step", help="step of thresholds", type=float, default=0.03)
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=4)
-    parser.add_argument("--data_length", help="minimum length of data", type=int, default=300)
+    parser.add_argument("--data_num", help="number of data", type=int, default=10)
+    parser.add_argument("--data_length", help="minimum length of data", type=int, default=800)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
 
     if args.test:
-        args.lags = [1, 3]
-        args.thresholds = np.arange(0.04, 0.12, 0.04)
+        args.lags = [2, 3, 4]
+        args.thresholds = np.arange(0.02, 0.14, 0.02)
         args.worker = 2
         ignore_warn = True
         logger.info('[TEST MODE]')
