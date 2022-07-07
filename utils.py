@@ -4,6 +4,7 @@ import os
 import time
 
 import numpy as np
+import tensorflow as tf
 from orbit.utils.dataset import load_m3monthly
 from sklearn import metrics
 from tqdm import tqdm
@@ -42,7 +43,7 @@ def load_m3_data(min_length=100, n_set=5):
     logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
     return datasets
 
-def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly'):
+def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name='D56'):
     logger.info('Loading M4 dataset')
     datasets = dict()
     selected_datasets = dict()
@@ -54,6 +55,9 @@ def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly'):
                 line = line.strip().replace('"', '').split(',')
                 dataset_name = line.pop(0)
                 line = [float(v) for v in line if v]
+
+                if name and dataset_name != name:
+                    continue
 
                 if train_test == 'Train':
                     datasets[dataset_name] = np.array(line)
@@ -135,6 +139,8 @@ class Performance_metrics:
         return np.sqrt(metrics.mean_squared_error(true_y, predict_y))
 
     def symmetric_mean_absolute_percentage_error(self, true_y, predict_y):
+        if tf.is_tensor(true_y):
+            return tf.reduce_mean(tf.abs(predict_y - true_y) / ((tf.abs(predict_y) + tf.abs(true_y)) / 2))
         return np.mean(np.abs(predict_y - true_y) / ((np.abs(predict_y) + np.abs(true_y)) / 2))
 
 
