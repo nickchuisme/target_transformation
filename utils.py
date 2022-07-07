@@ -43,7 +43,7 @@ def load_m3_data(min_length=100, n_set=5):
     logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
     return datasets
 
-def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name='D56'):
+def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name=''):
     logger.info('Loading M4 dataset')
     datasets = dict()
     selected_datasets = dict()
