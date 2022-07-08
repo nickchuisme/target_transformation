@@ -75,8 +75,8 @@ class BestModelSearch:
                 yt = np.array(data_transformed)[:, lags:]
             else:
                 X, Xt = [], []
-                y = series
-                yt = series_transformed
+                y = series.reshape(-1, 1)
+                yt = series_transformed.reshape(-1, 1)
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -124,7 +124,7 @@ class BestModelSearch:
             if fit_model and idx == 0:
                 # fitting model
                 if model_name in settings.regression_models:
-                    if model_name in ['GRU']:
+                    if model_name in ['GRU', 'LSTM']:
                         param.update({'feature_num': train_Xt.shape[1]})
                     model = self.regression_models[model_name]()
                     model.set_params(**param)
@@ -134,8 +134,8 @@ class BestModelSearch:
             # the others fitting
             elif fit_model and idx != 0:
                 if model_name in settings.regression_models:
-                    if model_name in ['GRU']:
-                        train_Xt, train_yt = train_Xt[-1 * retrain_window:], train_yt[-1 * retrain_window:]
+                    # if model_name in ['GRU']:
+                    #     train_Xt, train_yt = train_Xt[-1 * retrain_window:], train_yt[-1 * retrain_window:]
                     model.fit(train_Xt, train_yt)
                 elif model_name in settings.forecasting_models:
                     model.fit(train_yt)
@@ -173,6 +173,7 @@ class BestModelSearch:
             train_y, test_y = train_test_split(self.y, test_size=self.test_size, shuffle=False)
 
             predictions = []
+            start_time = time.time()
             regression_data = model_name in self.regression_models
             for item in self.gen_train_test(series, lag, threshold, self.test_size, regression_data=regression_data):
 
@@ -184,9 +185,19 @@ class BestModelSearch:
             p_metric = Performance_metrics(true_y=test_y, predict_y=predictions)
             p_metric.measuring(model_name=model_name, dataset_name=self.dataset_name)
 
+            # additional information
+            end_time = time.time()
+            elasped_time = end_time - start_time
+            logger.debug(f'Worker {self.worker_id}| takes {elasped_time:.2f}s on ({self.dataset_name}:{model_name})\n')
+
+            additional_info = {}
+            additional_info['retrain_time'] = elasped_time
+            if model_name in ['RandomForestRegressor']:
+                additional_info['feature_importance'] = model.feature_importances_
+
             # save best model testing result
             transformed = 'transformed' if threshold > 0 else 'untransformed'
-            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), lags=lag, horizon=horizon, threshold=threshold, best_params=param)
+            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), lags=lag, horizon=horizon, threshold=threshold, best_params=param, additional_info=additional_info)
             self.save_scores_info(scores=p_metric.scores, model_name=model_name)
 
     # ----------------------------------------------------
@@ -265,12 +276,13 @@ class BestModelSearch:
         # save training set and testing set information
         self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
         self.record.insert(name=self.dataset_name, series=self.dataset)
-        self.record.insert(train_y=self.train_y, test_y=self.test_y)
+        self.record.insert(train_y=self.train_y, test_y=self.test_y, test_size=self.test_size)
 
         best_data = dict()
         for model_name in self.tuning_models:
             # use training set to validate model
-            best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag, scoring='mean_squared_error')
+            # best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag, scoring='mean_squared_error')
+            best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag)
         return best_data
 
 
@@ -288,6 +300,7 @@ class MultiWork:
         if not sys.warnoptions and ignore:
             warnings.simplefilter("ignore")
             os.environ["PYTHONWARNINGS"] = "ignore"
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
     def gen_hyperparams(self, lags, horizons, thresholds):
         hyper_threshold_lag = []
@@ -324,7 +337,7 @@ class MultiWork:
                 # model validation and get best params of each model
                 logger.info(f'Worker {worker_id}| is tuning {name} ({label})')
                 best_data = bms.hyperparameter_tuning(dataset, threshold_lag)
-                logger.debug(f"Best model of {name} after tuning ({label}):\n{tabulate(pd.DataFrame(best_data), headers='keys', tablefmt='psql')}")
+                logger.debug(f"Worker {worker_id}| Best model of {name} after tuning ({label}):\n{tabulate(pd.DataFrame(best_data), headers='keys', tablefmt='psql')}")
 
                 # refit and retrain model
                 logger.info(f'Worker {worker_id}| is retraining {name} ({label})')
@@ -373,8 +386,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.test:
-        args.lags = [2, 3, 4]
-        args.thresholds = np.arange(0.02, 0.14, 0.02)
+        args.lags = [2, 4]
+        args.thresholds = [0.005, 0.01]
         args.worker = 2
         ignore_warn = True
         logger.info('[TEST MODE]')
