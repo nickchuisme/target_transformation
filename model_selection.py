@@ -56,7 +56,8 @@ class BestModelSearch:
         try:
             if transform_threshold:
                 # if threshold > 0, do transformation
-                series_transformed = self.transform.dwt(series, threshold=transform_threshold)
+                series_transformed = self.transform.dwt(series[:-1], threshold=transform_threshold)
+                series_transformed = np.concatenate((series_transformed, series[-1:, ]))
             else:
                 series_transformed = series
 
@@ -94,6 +95,7 @@ class BestModelSearch:
                 y = series[:]
             else:
                 y = series[:end_idx]
+
             # generate (un)transformed features X1, X2, ... by target y
             X, y, Xt, yt = self.gen_feature_data(y, lags=lag, transform_threshold=threshold, regression_data=regression_data)
 
@@ -184,7 +186,7 @@ class BestModelSearch:
 
             # save best model testing result
             transformed = 'transformed' if threshold > 0 else 'untransformed'
-            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), lags=lag, horizon=horizon, threshold=threshold)
+            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), lags=lag, horizon=horizon, threshold=threshold, best_params=param)
             self.save_scores_info(scores=p_metric.scores, model_name=model_name)
 
     # ----------------------------------------------------
@@ -365,7 +367,7 @@ if __name__ == '__main__':
     parser.add_argument("--threshold_step", help="step of thresholds", type=float, default=0.03)
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=10)
+    parser.add_argument("--data_num", help="number of data", type=int, default=4)
     parser.add_argument("--data_length", help="minimum length of data", type=int, default=800)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
