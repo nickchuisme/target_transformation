@@ -61,7 +61,7 @@ class GRU_model:
         self.model.compile(optimizer=Adam(learning_rate=self.lr), loss=self.loss)
 
 
-    def fit(self, train_x, train_y, verbose=1):
+    def fit(self, train_x, train_y, verbose=0):
         # (n_datapoint, row_each_time, n_feature)
         train_x = train_x.reshape(train_x.shape[0], 1, train_x.shape[1])
         if self.earlystop:
@@ -86,7 +86,7 @@ regression_models = {
     'RandomForestRegressor': ensemble.RandomForestRegressor,
 
     'MLPRegressor': neural_network.MLPRegressor,
-    'GRU': GRU_model,
+    # 'GRU': GRU_model,
 
 }
 
