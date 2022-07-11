@@ -1,19 +1,21 @@
+import time
 import numpy as np
+import tensorflow
 
 try:
-    from keras import Input
-    from keras.callbacks import EarlyStopping
-    from keras.layers import GRU, LSTM, Bidirectional, Dense
-    from keras.models import Sequential
-    from keras.optimizers import Adam
-    from keras import backend
-except:
     from tensorflow.keras import Input
     from tensorflow.keras.callbacks import EarlyStopping
     from tensorflow.keras.layers import GRU, LSTM, Bidirectional, Dense
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.optimizers import Adam
     from tensorflow.keras import backend
+except:
+    from keras import Input
+    from keras.callbacks import EarlyStopping
+    from keras.layers import GRU, LSTM, Bidirectional, Dense
+    from keras.models import Sequential
+    from keras.optimizers import Adam
+    from keras import backend
 
 from sklearn import ensemble, linear_model, neighbors, neural_network, svm
 from xgboost import XGBRegressor
@@ -25,15 +27,13 @@ from utils import Performance_metrics
 
 class GRU_model:
 
-    def __init__(self, layers=(10,), epoch=2000, batch_size=1, earlystop=True, bidirectional=False, lr=0.1, loss='mse'):
-        # symmetric_mean_absolute_percentage_error
+    def __init__(self, layers=(10,), epoch=2000, batch_size=1, earlystop=True, bidirectional=True, lr=0.1, loss='mse'):
         self.dim = (None, 1)
         self.layers = layers
         self.epoch = epoch
         self.batch_size = batch_size
         self.earlystop = earlystop
         self.bidirectional = bidirectional
-        # self.lr = ExponentialDecay(initial_learning_rate=lr, decay_steps=10000, decay_rate=0.9)
         self.lr = lr
 
         self.p = Performance_metrics()
@@ -42,6 +42,7 @@ class GRU_model:
         else:
             self.loss = loss
 
+        self.init_model = None
         self.model = None
 
     def set_params(self, **kwargs):
@@ -49,7 +50,6 @@ class GRU_model:
             if k == 'layers':
                 self.layers = v
             if k == 'feature_num':
-                # self.dim = (v, 1)
                 self.dim = (1, v)
             if k == 'lr':
                 self.lr = v
@@ -57,19 +57,20 @@ class GRU_model:
         self.build()
 
     def build(self):
-        self.model = Sequential()
-        # model.add(Input((train_x.shape[1], 1)))
-        self.model.add(Input(self.dim))
+        self.init_model = Sequential()
+        self.init_model.add(Input(self.dim))
         for i, neuron in enumerate(self.layers):
             name = f'GRU-{i+1}'
             if self.bidirectional:
-                self.model.add(Bidirectional(GRU(units=neuron, return_sequences=True), name=name))
+                self.init_model.add(Bidirectional(GRU(units=neuron, return_sequences=True), name=name))
             else:
-                self.model.add(GRU(units=neuron, return_sequences=True, activation='relu', kernel_initializer='he_uniform', name=name))
-        self.model.add(Dense(int(self.layers[-1]/2), activation='relu', kernel_initializer='he_uniform', name='Dense'))
-        self.model.add(Dense(1, activation='linear', kernel_initializer='he_uniform', name='Output'))
+                self.init_model.add(GRU(units=neuron, return_sequences=True, activation='relu', kernel_initializer='he_uniform', name=name))
+        self.init_model.add(Dense(int(self.layers[-1]/2), activation='relu', kernel_initializer='he_uniform', name='Dense'))
+        self.init_model.add(Dense(1, activation='linear', kernel_initializer='he_uniform', name='Output'))
 
-        self.model.compile(optimizer=Adam(learning_rate=self.lr), loss=self.loss)
+        self.init_model.compile(optimizer=Adam(learning_rate=self.lr), loss=self.loss)
+
+        self.model = self.init_model
 
 
     def fit(self, train_x, train_y, verbose=0):
@@ -86,21 +87,44 @@ class GRU_model:
         return result
 
     def reset_model(self):
-        backend.clear_session()
+        # backend.clear_session()
+        self.model = self.init_model
+
+class LSTM_model(GRU_model):
+
+    def __init__(self, layers=(10, ), epoch=2000, batch_size=1, earlystop=True, bidirectional=True, lr=0.1, loss='mse'):
+        super().__init__(layers, epoch, batch_size, earlystop, bidirectional, lr, loss)
+
+    def build(self):
+        self.init_model = Sequential()
+        self.init_model.add(Input(self.dim))
+        for i, neuron in enumerate(self.layers):
+            name = f'LSTM-{i+1}'
+            if self.bidirectional:
+                self.init_model.add(Bidirectional(LSTM(units=neuron, return_sequences=True), name=name))
+            else:
+                self.model.add(LSTM(units=neuron, return_sequences=True, activation='relu', kernel_initializer='he_uniform', name=name))
+        self.init_model.add(Dense(int(self.layers[-1]/2), activation='relu', kernel_initializer='he_uniform', name='Dense'))
+        self.init_model.add(Dense(1, activation='linear', kernel_initializer='he_uniform', name='Output'))
+
+        self.init_model.compile(optimizer=Adam(learning_rate=self.lr), loss=self.loss)
+
+        self.model = self.init_model
 
 
 regression_models = {
 
     'ElasticNet': linear_model.ElasticNet,
 
-    # 'LinearSVR': svm.LinearSVR,
-    # 'KNeighborsRegressor': neighbors.KNeighborsRegressor,
+    'LinearSVR': svm.LinearSVR,
+    'KNeighborsRegressor': neighbors.KNeighborsRegressor,
 
     # 'XGBRegressor': XGBRegressor,
-    # 'RandomForestRegressor': ensemble.RandomForestRegressor,
+    'RandomForestRegressor': ensemble.RandomForestRegressor,
 
-    # 'MLPRegressor': neural_network.MLPRegressor,
-    'GRU': GRU_model,
+    'MLPRegressor': neural_network.MLPRegressor,
+    # 'GRU': GRU_model,
+    # 'LSTM': LSTM_model,
 
 }
 
@@ -153,6 +177,10 @@ params = {
         'learning_rate': ['adaptive'],
     },
     'GRU': {
+        'layers': [(10, ), ],
+        'lr': [0.1]
+    },
+    'LSTM': {
         'layers': [(10, ), ],
         'lr': [0.1]
     },
