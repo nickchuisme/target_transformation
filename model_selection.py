@@ -138,13 +138,14 @@ class BestModelSearch:
                 if model_name in settings.regression_models:
                     if model_name in ['GRU', 'LSTM']:
                         model.reset_model()
-                        # train_Xt, train_yt = train_Xt[-1 * retrain_window:], train_yt[-1 * retrain_window:]
                     model.fit(train_Xt, train_yt)
                 elif model_name in settings.forecasting_models:
                     model.fit(train_yt)
 
             else:
                 # In the iteration without fitting, we still have to update the forecasting model's observation
+                if model_name in ['GRU', 'LSTM']:
+                    model.fit(train_Xt[-1:], train_yt[-1:])
                 if model_name in settings.forecasting_models:
                     model.update(pd.Series(train_yt[-1], index=[len(train_yt) - 1]), update_params=True)
 
@@ -172,8 +173,8 @@ class BestModelSearch:
 
             model_name, model, param, lag, threshold, horizon = list(model_value.values())
 
-            self.y = series[lag:]
-            train_y, test_y = train_test_split(self.y, test_size=self.test_size, shuffle=False)
+            # self.y = series[lag:]
+            # train_y, test_y = train_test_split(self.y, test_size=self.test_size, shuffle=False)
 
             predictions, trues = [], []
             start_time = time.time()
@@ -281,7 +282,7 @@ class BestModelSearch:
         # save training set and testing set information
         self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
         self.record.insert(name=self.dataset_name, series=self.dataset)
-        self.record.insert(train_y=self.train_y, test_y=self.test_y, test_size=self.test_size)
+        self.record.insert(train_y=self.train_y, test_y=self.test_y, test_size=self.test_size, gap=self.gap)
 
         best_data = dict()
         for model_name in self.tuning_models:
@@ -384,17 +385,17 @@ if __name__ == '__main__':
     parser.add_argument("--thresholds", help="thresholds excludes zero", nargs="*", type=float)
     parser.add_argument("--threshold_step", help="step of thresholds", type=float, default=0.03)
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
-    parser.add_argument("--gap", help="number of gap", type=int, default=22)
+    parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=1)
+    parser.add_argument("--data_num", help="number of data", type=int, default=2)
     parser.add_argument("--data_length", help="minimum length of data", type=int, default=1000)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
 
     if args.test:
-        args.lags = [2, 4]
-        args.thresholds = [0.005, 0.01]
-        args.worker = 1
+        args.lags = [1, 2 ,3, 4]
+        args.thresholds = [0.005, 0.01, 0.015]
+        args.worker = 2
         ignore_warn = True
         logger.info('[TEST MODE]')
     else:
@@ -407,7 +408,7 @@ if __name__ == '__main__':
 
     # load time series
     # datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
-    datasets = load_m4_data(min_length=args.data_length, max_length=1200, n_set=args.data_num, freq='Daily')
+    datasets = load_m4_data(min_length=args.data_length, max_length=1500, n_set=args.data_num, freq='Daily')
 
     mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, gap=args.gap, worker_num=args.worker, warning_suppressing=ignore_warn)
     mw.run()
