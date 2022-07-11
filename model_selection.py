@@ -12,13 +12,12 @@ from tabulate import tabulate
 
 import settings
 from transformation import Transformation
-from utils import (Performance_metrics, Records, confirm_json, init_json,
-                   load_m3_data, load_m4_data, logger)
+from utils import *
 
 
 class BestModelSearch:
 
-    def __init__(self, dataset_name=None, dataset=None, test_size=0.2, gap=22, worker_id=1):
+    def __init__(self, dataset_name=None, dataset=None, test_size=0.2, gap=0, worker_id=1):
 
         self.dataset_name = dataset_name
         self.dataset = dataset
@@ -199,7 +198,7 @@ class BestModelSearch:
             additional_info = {}
             additional_info['retrain_time'] = elasped_time
             if model_name in ['RandomForestRegressor']:
-                additional_info['feature_importance'] = model.feature_importances_
+                additional_info['feature_importance'] = model.feature_importances_.tolist()
 
             # save best model testing result
             transformed = 'transformed' if threshold > 0 else 'untransformed'
@@ -293,11 +292,12 @@ class BestModelSearch:
 
 class MultiWork:
 
-    def __init__(self, dataset, lags=range(1, 4), thresholds=np.arange(0.04, 0.16, 0.04), worker_num=1, warning_suppressing=False):
+    def __init__(self, dataset, lags=range(1, 4), thresholds=np.arange(0.04, 0.16, 0.04), gap=22, worker_num=1, warning_suppressing=False):
         self.dataset = list(dataset.items())
         self.worker_num = worker_num
         self.lags = lags
         self.thresholds = thresholds
+        self.gap = gap
 
         self.warning_suppressing(ignore=warning_suppressing)
 
@@ -332,7 +332,7 @@ class MultiWork:
             worker_id = 1
         logger.info(f'Worker {worker_id}| is processing {name}(len: {len(dataset)}, test size: {test_size})')
 
-        bms = BestModelSearch(dataset_name=name, dataset=dataset, test_size=test_size, gap=22, worker_id=worker_id)
+        bms = BestModelSearch(dataset_name=name, dataset=dataset, test_size=test_size, gap=self.gap, worker_id=worker_id)
 
         # hyperparameter tuning with/without transformation
         for label, thresholds in zip(['Untransformed', 'Transformed'], [[0.], self.thresholds]):
@@ -384,15 +384,16 @@ if __name__ == '__main__':
     parser.add_argument("--thresholds", help="thresholds excludes zero", nargs="*", type=float)
     parser.add_argument("--threshold_step", help="step of thresholds", type=float, default=0.03)
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
+    parser.add_argument("--gap", help="number of gap", type=int, default=22)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
     parser.add_argument("--data_num", help="number of data", type=int, default=1)
-    parser.add_argument("--data_length", help="minimum length of data", type=int, default=800)
+    parser.add_argument("--data_length", help="minimum length of data", type=int, default=1000)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
 
     if args.test:
         args.lags = [2, 4]
-        args.thresholds = [0.005, 0.01, 0.015]
+        args.thresholds = [0.005, 0.01]
         args.worker = 1
         ignore_warn = True
         logger.info('[TEST MODE]')
@@ -402,11 +403,11 @@ if __name__ == '__main__':
         ignore_warn = True
 
     logger.info(f'Models: {list(settings.regression_models.keys())+list(settings.forecasting_models.keys())}')
-    logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}')
+    logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}, Gap: {args.gap}')
 
     # load time series
     # datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
-    datasets = load_m4_data(min_length=args.data_length, max_length=1000, n_set=args.data_num, freq='Daily')
+    datasets = load_m4_data(min_length=args.data_length, max_length=1200, n_set=args.data_num, freq='Daily')
 
-    mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, worker_num=args.worker, warning_suppressing=ignore_warn)
+    mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, gap=args.gap, worker_num=args.worker, warning_suppressing=ignore_warn)
     mw.run()

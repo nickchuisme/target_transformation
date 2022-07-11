@@ -72,8 +72,8 @@ def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name=
                         logger.info(f'Get {len(selected_datasets)} datasets ({min_length} < length < {max_length})')
                         return selected_datasets
 
-    logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
-    return datasets
+    logger.info(f'Get {len(selected_datasets)} datasets with length > {min_length}')
+    return selected_datasets
 
 def init_json(file_path='./results.json.tmp'):
     open(file_path, 'w').close()
@@ -132,7 +132,7 @@ class Performance_metrics:
                     logger.debug(f'{k}: {v:.3f}')
                 except:
                     logger.debug(f'{k}: {v}')
-        logger.debug('\n')
+        # logger.debug('\n')
 
     # customised scoring
     def root_mean_square_error(self, true_y, predict_y):
@@ -169,5 +169,5 @@ class Records:
             try:
                 file.write(json.dumps(self.record))
             except Exception as e:
-                logger.warn(f'Cannot save ndarray into JSON, error:{e}')
+                logger.warn(f'Cannot save ndarray into JSON, error:{e}, {self.record}')
             file.write('\n')
