@@ -1,11 +1,22 @@
 import numpy as np
-from keras import Input
-from keras.callbacks import EarlyStopping
-from keras.layers import GRU, LSTM, Bidirectional, Dense
-from keras.models import Sequential
-from keras.optimizers import Adam
-# from tensorflow.keras.optimizers.schedules import ExponentialDecay
+
+try:
+    from keras import Input
+    from keras.callbacks import EarlyStopping
+    from keras.layers import GRU, LSTM, Bidirectional, Dense
+    from keras.models import Sequential
+    from keras.optimizers import Adam
+    from keras import backend
+except:
+    from tensorflow.keras import Input
+    from tensorflow.keras.callbacks import EarlyStopping
+    from tensorflow.keras.layers import GRU, LSTM, Bidirectional, Dense
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.optimizers import Adam
+    from tensorflow.keras import backend
+
 from sklearn import ensemble, linear_model, neighbors, neural_network, svm
+from xgboost import XGBRegressor
 from sktime.forecasting.arima import AutoARIMA
 from sktime.forecasting.ets import AutoETS
 
@@ -74,19 +85,22 @@ class GRU_model:
         result = self.model.predict(test_x, verbose=0, batch_size=self.batch_size).ravel()
         return result
 
+    def reset_model(self):
+        backend.clear_session()
+
 
 regression_models = {
 
     'ElasticNet': linear_model.ElasticNet,
 
-    'LinearSVR': svm.LinearSVR,
+    # 'LinearSVR': svm.LinearSVR,
     # 'KNeighborsRegressor': neighbors.KNeighborsRegressor,
 
     # 'XGBRegressor': XGBRegressor,
-    'RandomForestRegressor': ensemble.RandomForestRegressor,
+    # 'RandomForestRegressor': ensemble.RandomForestRegressor,
 
-    'MLPRegressor': neural_network.MLPRegressor,
-    # 'GRU': GRU_model,
+    # 'MLPRegressor': neural_network.MLPRegressor,
+    'GRU': GRU_model,
 
 }
 
@@ -100,10 +114,10 @@ params = {
     'ElasticNet': {
         'alpha': [0.01, 0.1, 0.5, 1],
         # 'alpha': [1],
-        'l1_ratio': np.arange(0.1, 1., 0.2),
+        'l1_ratio': np.arange(0.1, 1., 0.1),
         'tol': [0.001, 0.01],
         # 'random_state': [0],
-        'selection': ['random'],
+        'selection': ['random', 'cyclic'],
     },
 
     'LinearSVR': {
