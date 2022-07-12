@@ -4,9 +4,11 @@ import os
 import time
 
 import numpy as np
+import pickle5 as pickle
 import tensorflow as tf
 from orbit.utils.dataset import load_m3monthly
 from sklearn import metrics
+from tabulate import tabulate
 from tqdm import tqdm
 
 logger = logging.getLogger()
@@ -21,6 +23,8 @@ file_handler = logging.FileHandler(filename='./records.log', mode='w')
 file_handler.setFormatter(formatter)
 file_handler.setLevel(logging.DEBUG)
 
+if logger.hasHandlers():
+    logger.handlers.clear()
 logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
 logging.getLogger('matplotlib.font_manager').disabled = True
@@ -43,7 +47,7 @@ def load_m3_data(min_length=100, n_set=5):
     logger.info(f'Get {len(datasets)} datasets with length > {min_length}')
     return datasets
 
-def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name=''):
+def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name=[]):
     logger.info('Loading M4 dataset')
     datasets = dict()
     selected_datasets = dict()
@@ -56,7 +60,7 @@ def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name=
                 dataset_name = line.pop(0)
                 line = [float(v) for v in line if v]
 
-                if name and dataset_name != name:
+                if name and dataset_name not in name:
                     continue
 
                 if train_test == 'Train':
@@ -75,20 +79,31 @@ def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name=
     logger.info(f'Get {len(selected_datasets)} datasets with length > {min_length}')
     return selected_datasets
 
-def init_json(file_path='./results.json.tmp'):
-    open(file_path, 'w').close()
+def load_btc_pkl(freq='d'):
+    logger.info(f'Loading BTC dataset, frequency: {freq}')
+    data = np.load(f'./Dataset/btc_1{freq}.pkl', allow_pickle=True)
+    logger.debug(f'Columns: {list(data.columns)}')
+    # return list(data.columns), data.to_numpy()
+    return data
 
-def confirm_json():
-    if not os.path.isdir('./json_data'):
-        os.makedirs('./json_data')
+def save_json(method):
+    def main_func(*args, **kw):
+        open('./results.json.tmp', 'w').close()
 
-    target_path = f'./json_data/results_{int(time.time())}.json'
+        result = method(*args, **kw)
 
-    if os.path.exists(target_path):
-        os.remove(target_path)
-    os.rename('./results.json.tmp', target_path)
-    logger.info(f'Done! {target_path} is saved')
+        if not os.path.isdir('./json_data'):
+            os.makedirs('./json_data')
 
+        target_path = f'./json_data/results_{int(time.time())}.json'
+
+        if os.path.exists(target_path):
+            os.remove(target_path)
+        os.rename('./results.json.tmp', target_path)
+        logger.info(f'Done! {target_path} is saved')
+
+        return result
+    return main_func
 
 class Performance_metrics:
 
@@ -171,3 +186,6 @@ class Records:
             except Exception as e:
                 logger.warn(f'Cannot save ndarray into JSON, error:{e}, {self.record}')
             file.write('\n')
+
+# if __name__ == "__main__":
+#     load_btc_pkl(freq='d')
