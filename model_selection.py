@@ -137,8 +137,11 @@ class BestModelSearch:
             # elif fit_model or (idx + 1 == test_len):
                 if model_name in settings.regression_models:
                     if model_name in ['GRU', 'LSTM']:
-                        model.reset_model()
-                    model.fit(train_Xt, train_yt)
+                        # model.reset_model()
+                        #  model.fit(train_Xt[-1:], train_yt[-1:])
+                         model.fit(train_Xt, train_yt)
+                    else:
+                        model.fit(train_Xt, train_yt)
                 elif model_name in settings.forecasting_models:
                     model.fit(train_yt)
 
@@ -257,21 +260,6 @@ class BestModelSearch:
                     best_data['best_threshold'] = threshold
                     best_data['best_horizon'] = horizon
 
-        # try:
-        #     # refit the validated model with the whole training set
-        #     _, _, Xt, yt = self.gen_feature_data(series, lags=best_data['best_lag'], transform_threshold=best_data['best_threshold'], regression_data=regression_data)
-        #     if model_name in self.regression_models:
-        #         if model_name in ['GRU']:
-        #             best_data['best_param'].update({'feature_num': best_data['best_lag']})
-        #         best_data['best_model'] = self.regression_models[model_name]()
-        #         best_data['best_model'].set_params(**best_data['best_param'])
-        #         best_data['best_model'].fit(Xt, yt.ravel())
-        #     elif model_name in self.forecasting_models:
-        #         best_data['best_model'] = self.forecasting_models[model_name](**best_data['best_param']).fit(yt)
-        # except Exception as e:
-        #     exc_type, exc_obj, exc_tb = sys.exc_info()
-        #     logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
-
         return best_data
 
     # --------------------------------------------------
@@ -363,21 +351,17 @@ class MultiWork:
             self.worker_num = 1
         logger.info(f'CPUs count: {cpus+1*leave_one} ==> workers: {self.worker_num}')
 
+    @save_json
     def run(self):
         self.set_workers(leave_one=False)
-        init_json()
-
         if self.worker_num == 1:
             for data in self.dataset:
                 self.work(data)
         else:
             pool = multiprocessing.Pool(self.worker_num)
-            pool.map_async(self.work, self.dataset)
+            pool.imap_unordered(self.work, self.dataset)
             pool.close()
             pool.join()
-
-        # save json file
-        confirm_json()
 
 
 if __name__ == '__main__':
@@ -388,13 +372,15 @@ if __name__ == '__main__':
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
     parser.add_argument("--data_num", help="number of data", type=int, default=2)
-    parser.add_argument("--data_length", help="minimum length of data", type=int, default=1000)
+    parser.add_argument("--data_length", help="minimum length of data", type=int, default=1300)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
 
+    np.random.seed(123)
+
     if args.test:
-        args.lags = [1, 2 ,3, 4]
-        args.thresholds = [0.005, 0.01, 0.015]
+        args.lags = [1, 2]
+        args.thresholds = [0.005, 0.01]
         args.worker = 2
         ignore_warn = True
         logger.info('[TEST MODE]')
