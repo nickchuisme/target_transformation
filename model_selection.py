@@ -53,29 +53,38 @@ class BestModelSearch:
         data = []
         data_transformed = []
 
+        raw_feature, target = series[:, :-1], series[:, -1:]
+
         try:
             if transform_threshold:
                 # if threshold > 0, do transformation
-                series_transformed = self.transform.dwt(series[:-1], threshold=transform_threshold)
-                series_transformed = np.concatenate((series_transformed, series[-1:, ]))
+                series_transformed = self.transform.dwt(target[:-1], threshold=transform_threshold)
+                series_transformed = np.concatenate((series_transformed, target[-1:].ravel()))
             else:
-                series_transformed = series
+                series_transformed = target
 
             if regression_data:
                 # data for regression model is shorter because of the lag
-                for i in range(len(series) - lags - horizon + 1):
+                for i in range(len(target) - lags - horizon + 1):
                     end_idx = i + lags + horizon
-                    data.append(series[i: end_idx])
-                    data_transformed.append(series_transformed[i: end_idx])
 
-                X = np.array(data)[:, :lags]
-                y = np.array(data)[:, lags:]
+                    # print(raw_feature[i, :].ravel().shape, target[i: end_idx].ravel().shape)
+                    # print(raw_feature[i, :].ravel(), target[i: end_idx].ravel())
+                    if lags != 0:
+                        data.append(np.concatenate((raw_feature[i, :].ravel(), target[i: end_idx].ravel())))
+                        data_transformed.append(np.concatenate((raw_feature[i, :].ravel(), series_transformed[i: end_idx].ravel())))
+                    else:
+                        data.append(np.concatenate((raw_feature[i, :].ravel(), target[end_idx-1].ravel())))
+                        data_transformed.append(np.concatenate((raw_feature[i, :].ravel(), series_transformed[end_idx-1].ravel())))
 
-                Xt = np.array(data_transformed)[:, :lags]
-                yt = np.array(data_transformed)[:, lags:]
+                X = np.array(data)[:, :-1 * horizon]
+                y = np.array(data)[:, -1 * horizon:]
+
+                Xt = np.array(data_transformed)[:, :-1 * horizon]
+                yt = np.array(data_transformed)[:, -1 * horizon:]
             else:
                 X, Xt = [], []
-                y = series.reshape(-1, 1)
+                y = target.reshape(-1, 1)
                 yt = series_transformed.reshape(-1, 1)
 
         except Exception as e:
@@ -89,22 +98,30 @@ class BestModelSearch:
         iteration = test_len #### make step size = 1
         step_size = int(test_len / iteration)
 
+        if isinstance(series, pd.DataFrame):
+            series = series.to_numpy()
+
         for i in range(iteration):
-            end_idx = -1 * test_len + (i + 1) * step_size - self.gap
-            if end_idx == 0:
-                y = series[:]
-            else:
-                y = series[:end_idx]
+            try:
+                end_idx = -1 * test_len + (i + 1) * step_size - self.gap
+                if end_idx == 0:
+                    y = series[:]
+                else:
+                    y = series[:end_idx]
 
-            # generate (un)transformed features X1, X2, ... by target y
-            X, y, Xt, yt = self.gen_feature_data(y, lags=lag, transform_threshold=threshold, regression_data=regression_data)
+                # generate (un)transformed features X1, X2, ... by target y
+                X, y, Xt, yt = self.gen_feature_data(y, lags=lag, transform_threshold=threshold, regression_data=regression_data)
 
-            train_Xt = Xt[:-1 * step_size]
-            train_yt = yt[:-1 * step_size]
+                train_Xt = Xt[:-1 * step_size]
+                train_yt = yt[:-1 * step_size]
 
-            test_Xt = Xt[-1 * step_size:]
-            # test_y = y[-1 * step_size:]
-            test_y = series[end_idx + self.gap - 1]
+                test_Xt = Xt[-1 * step_size:]
+                # test_y = y[-1 * step_size:]
+                test_y = np.array(series[end_idx + self.gap - 1, -1])
+
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                logger.error(f'(line:{exc_tb.tb_lineno}), iter: {i}, {e}')
 
             yield train_Xt, train_yt.ravel(), test_Xt, test_y.ravel(), i
 
@@ -113,10 +130,12 @@ class BestModelSearch:
         # step_size = int(test_len / iteration)
         if test_len <= 10:
             retrain_window = 1
-        elif test_len <= 50:
+        elif test_len <= 60:
              retrain_window = int(test_len / 5)
-        else:
+        elif test_len <= 120:
             retrain_window = 10
+        else:
+            retrain_window = 30
 
         fit_model = idx % retrain_window == 0
 
@@ -171,6 +190,10 @@ class BestModelSearch:
     # series: entire time series
     # best_data: the parameters of best_validated model
     def retrain(self, series, best_data):
+        if isinstance(series, pd.DataFrame):
+            series = series.to_numpy()
+        else:
+            series = series.reshape(-1, 1)
 
         for model_name, model_value in best_data.items():
 
@@ -266,16 +289,30 @@ class BestModelSearch:
     # series: entire time series
     # threshold_lag: combination of thresholds and lags
     def hyperparameter_tuning(self, series, threshold_lag):
+        if isinstance(series, pd.DataFrame):
+            series = series.to_numpy()
+        else:
+            series = series.reshape(-1, 1)
 
         # save training set and testing set information
-        self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
-        self.record.insert(name=self.dataset_name, series=self.dataset)
-        self.record.insert(train_y=self.train_y, test_y=self.test_y, test_size=self.test_size, gap=self.gap)
+        try:
+            self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
+
+            self.record.insert(name=self.dataset_name, series=self.dataset)
+            self.record.insert(train_y=self.train_y[:, -1].ravel(), test_y=self.test_y[:, -1].ravel(), test_size=self.test_size, gap=self.gap)
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            logger.error(f'(line: {exc_tb.tb_lineno}) {e}')
 
         best_data = dict()
         for model_name in self.tuning_models:
             # use training set to validate model
-            best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag)
+            try:
+                logger.debug(f'Worker {self.worker_id}| is tuning {model_name}')
+                best_data[model_name] = self.tuning(model_name=model_name, series=self.train_y, threshold_lag=threshold_lag)
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
         return best_data
 
 
@@ -296,6 +333,31 @@ class MultiWork:
             os.environ["PYTHONWARNINGS"] = "ignore"
             os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
+    def feature_selection(self, dataset, k_best=15):
+        import heapq
+        from sklearn import ensemble
+        from lightgbm import LGBMRegressor
+
+        fea_dict = dict()
+        data = dataset.to_numpy()
+        # model = ensemble.RandomForestRegressor().fit(data[:, :-1], data[:, -1:])
+        model = LGBMRegressor().fit(data[:, :-1], data[:, -1:])
+
+        for key, imp in zip(dataset.columns[:-1], model.feature_importances_):
+            fea_dict[key] = imp
+        k_keys_sorted = heapq.nlargest(k_best, fea_dict)
+        k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-69', 'f-59', 'f-48', 'f-58', 'f-76', 'f-33', 'f-122']
+        k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-68', 'f-19', 'f-20', 'f-113', 'f-65', 'f-121', 'f-52']
+        
+        k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-68', 'f-19', 'f-20', 'f-113', 'f-65', 'f-121', 'f-52', 'f-69', 'f-59', 'f-48', 'f-58', 'f-76', 'f-33', 'f-122']
+        k_keys_sorted = ['f-50', 'f-49', 'vwap']
+        logger.info(f'Selected Features: {k_keys_sorted}')
+
+        useless_col = [col for col in dataset.columns[:-1] if col not in k_keys_sorted] + ['open', 'high', 'low']
+
+        dataset.drop(columns=useless_col, inplace=True)
+        return dataset
+
     def gen_hyperparams(self, lags, horizons, thresholds):
         hyper_threshold_lag = []
         for l in lags:
@@ -309,6 +371,11 @@ class MultiWork:
 
         # time series name and value
         name, dataset = dataset_item
+        # dataset = dataset.iloc[:, -5:]
+        if isinstance(dataset, pd.DataFrame):
+            dataset = self.feature_selection(dataset)
+            dataset.iloc[:, -1] = pd.Series(range(1, 1216))
+            print(dataset)
 
         if len(dataset) > 100:
             test_size = int(len(dataset) / 5) 
@@ -371,16 +438,16 @@ if __name__ == '__main__':
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=2)
+    parser.add_argument("--data_num", help="number of data", type=int, default=1)
     parser.add_argument("--data_length", help="minimum length of data", type=int, default=1300)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
 
-    np.random.seed(123)
+    # np.random.seed(123)
 
     if args.test:
-        args.lags = [1, 2]
-        args.thresholds = [0.005, 0.01]
+        args.lags = [1]
+        args.thresholds = [0.01, 0.015]
         args.worker = 2
         ignore_warn = True
         logger.info('[TEST MODE]')
@@ -394,7 +461,8 @@ if __name__ == '__main__':
 
     # load time series
     # datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
-    datasets = load_m4_data(min_length=args.data_length, max_length=1500, n_set=args.data_num, freq='Daily')
+    # datasets = load_m4_data(min_length=args.data_length, max_length=1500, n_set=args.data_num, freq='Daily')
+    datasets = load_btc_pkl(freq='d')
 
     mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, gap=args.gap, worker_num=args.worker, warning_suppressing=ignore_warn)
     mw.run()
