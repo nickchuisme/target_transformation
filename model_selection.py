@@ -117,7 +117,7 @@ class BestModelSearch:
                 yt = np.array(data_transformed)[:, -1 * horizon:]
             else:
                 X, Xt = [], []
-                y = series.reshape(-1, 1)
+                y = target.reshape(-1, 1)
                 yt = series_transformed.reshape(-1, 1)
 
         except Exception as e:
@@ -173,6 +173,8 @@ class BestModelSearch:
              retrain_window = int(test_len / iteration) + 1
         else:
             retrain_window = 10
+        else:
+            retrain_window = 30
 
         fit_model = idx % retrain_window == 0
 
