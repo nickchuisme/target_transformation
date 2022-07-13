@@ -21,6 +21,7 @@ from sklearn import ensemble, linear_model, neighbors, neural_network, svm
 from xgboost import XGBRegressor
 from sktime.forecasting.arima import AutoARIMA
 from sktime.forecasting.ets import AutoETS
+from sktime.forecasting.naive import NaiveForecaster
 
 from utils import Performance_metrics
 
@@ -130,18 +131,19 @@ regression_models = {
 
 forecasting_models = {
     # 'AutoARIMA': AutoARIMA,
-    'AutoETS': AutoETS,
+    # 'AutoETS': AutoETS,
+    # 'NaiveForecaster': NaiveForecaster,
 }
 
 # hyperparameters for tuning
 params = {
     'ElasticNet': {
-        'alpha': [0.01, 0.1, 0.5, 1],
+        'alpha': [0.01, 0.1, 1, 10],
         # 'alpha': [1],
-        'l1_ratio': np.arange(0.1, 1., 0.1),
-        'tol': [0.001, 0.01],
+        'l1_ratio': np.arange(0.1, 1., 0.2),
+        'tol': [0.001],
         # 'random_state': [0],
-        'selection': ['random', 'cyclic'],
+        'selection': ['random'],
     },
 
     'LinearSVR': {
@@ -150,7 +152,7 @@ params = {
     },
     'KNeighborsRegressor': {
         'n_neighbors': [2, 4, 8, 12, 16, 20],
-        'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute'],
+        'algorithm': ['auto'],
     },
 
     'XGBRegressor':{
@@ -166,7 +168,7 @@ params = {
 
     'MLPRegressor': {
         # 'hidden_layer_sizes': [(i, ) for i in range(1, 10)],
-        'hidden_layer_sizes': [(10, 10, 10,), (10, 10), (20, 10), (10,), (20,), ],
+        'hidden_layer_sizes': [(10, 10), (20, 10), (10,), (20,), ],
         # 'alpha': [0, 0.001, 0.01, 0.1],
         # 'activation': ['logistic', 'relu', 'tanh', 'identity'],
         # 'solver': ['lbfgs', 'adam', 'sgd'],
@@ -177,21 +179,26 @@ params = {
         'learning_rate': ['adaptive'],
     },
     'GRU': {
-        'layers': [(10, ), ],
+        'layers': [(20, ), ],
         'lr': [0.1]
     },
     'LSTM': {
-        'layers': [(10, ), ],
+        'layers': [(20, ), ],
         'lr': [0.1]
     },
 
     'AutoARIMA': {
         # 'sp': [12], # monthly
-        'sp': [7], # daily
+        # 'sp': [7], # daily
+        'seasonal': [False],
     },
     'AutoETS': {
         'auto': [True],
         # 'sp': [12], # monthly
         # 'sp': [7], # daily
+    },
+    'NaiveForecaster': {
+        'strategy': ['last'],
+        # 'sp': [7],
     },
 }
