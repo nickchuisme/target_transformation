@@ -9,6 +9,7 @@ import tensorflow as tf
 from orbit.utils.dataset import load_m3monthly
 from sklearn import metrics
 from tqdm import tqdm
+import pandas as pd
 
 logger = logging.getLogger()
 formatter = logging.Formatter('[%(asctime)s %(levelname)-7s] %(message)s', datefmt='%Y%m%d %H:%M:%S')
@@ -81,10 +82,11 @@ def load_m4_data(min_length=300, max_length=10000, n_set=5, freq='Hourly', name=
 
 def load_btc_pkl(freq='d'):
     logger.info(f'Loading BTC dataset, frequency: {freq}')
+    # logger.debug(f'Columns: {list(data.columns)}')
     data = np.load(f'./Dataset/btc_1{freq}.pkl', allow_pickle=True)
-    logger.debug(f'Columns: {list(data.columns)}')
-    # return list(data.columns), data.to_numpy()
-    return data
+    data.insert(len(data.columns) - 1, 'close', data.pop('close'))
+    data.reset_index(drop=True, inplace=True)
+    return {f'btc_{freq}': data}
 
 def save_json(method):
     def main_func(*args, **kw):
@@ -131,6 +133,7 @@ class Performance_metrics:
         for estimator in self.estimators.keys():
             try:
                 score = self.estimators[estimator](self.true_y, self.predict_y)
+                score = np.nan_to_num(score)
                 self.scores[estimator] = round(score, 3)
             except Exception as e:
                 logger.warn(f'({model_name}:{estimator}): {e}')
@@ -170,7 +173,13 @@ class Records:
 
     def insert(self, **kwargs):
         for k, v in kwargs.items():
-            self.record[k] = self.check_type(v)
+            if type(v).__module__ == 'numpy':
+                v = v.tolist()
+
+            if isinstance(v, pd.DataFrame):
+               v = v.iloc[:, -1].tolist()
+
+            self.record[k] = v
 
     def insert_model_info(self, transformed, model_name, **kwargs):
         if transformed not in self.record:
