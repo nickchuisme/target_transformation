@@ -4,11 +4,10 @@ import os
 import time
 
 import numpy as np
-import pickle5 as pickle
+import pandas as pd
 import tensorflow as tf
 from orbit.utils.dataset import load_m3monthly
 from sklearn import metrics
-from tabulate import tabulate
 from tqdm import tqdm
 
 logger = logging.getLogger()
@@ -120,11 +119,12 @@ class Performance_metrics:
             'r2': metrics.r2_score,
             'mean_absolute_percentage_error': metrics.mean_absolute_percentage_error,
             'symmetric_mean_absolute_percentage_error': self.symmetric_mean_absolute_percentage_error,
+            'relative_absolute_error': self.relative_absolute_error,
         }
         self.scores = dict.fromkeys(self.estimators.keys(), 0)
 
     def one_measure(self, scoring, true_y, pred_y):
-        return self.estimators[scoring](true_y, pred_y)
+        return self.estimators[scoring](np.array(true_y), np.array(pred_y))
 
     def measuring(self, model_name, dataset_name):
         for estimator in self.estimators.keys():
@@ -158,6 +158,9 @@ class Performance_metrics:
             return tf.reduce_mean(tf.abs(predict_y - true_y) / ((tf.abs(predict_y) + tf.abs(true_y)) / 2))
         return np.mean(np.abs(predict_y - true_y) / ((np.abs(predict_y) + np.abs(true_y)) / 2))
 
+    def relative_absolute_error(self, true_y, predict_y):
+        return np.sum(np.abs(true_y - predict_y)) / np.sum(np.abs(true_y - np.mean(true_y)))
+
 
 class Records:
 
@@ -166,18 +169,26 @@ class Records:
 
     def insert(self, **kwargs):
         for k, v in kwargs.items():
-            if type(v).__module__ == 'numpy':
-                v = v.tolist()
-            self.record[k] = v
+            self.record[k] = self.check_type(v)
 
     def insert_model_info(self, transformed, model_name, **kwargs):
         if transformed not in self.record:
             self.record[transformed] = dict()
 
         info = {
-            model_name: kwargs
+            model_name: dict()
         }
+        for k, v in kwargs.items():
+            info[model_name].update({k: self.check_type(v)})
+
         self.record[transformed].update(info)
+
+    def check_type(self, data):
+        if type(data).__module__ == 'numpy':
+            data = data.tolist()
+        elif isinstance(data, (pd.DataFrame, pd.Series)):
+            data = data.values.tolist()
+        return data
 
     def save_json(self, name):
         with open('./results.json.tmp', 'a') as file:
