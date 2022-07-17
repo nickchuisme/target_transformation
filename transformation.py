@@ -79,11 +79,13 @@ class Transformation:
         self.series = np.array(series).ravel()
         return self.series
 
-    def dwt(self, series, threshold=0.03, mode='smooth', wavelet='sym8', inverse=False, test=False):
+    ## suggest 0.5 -> origin
+    def dwt(self, series, threshold=0.5, mode='smooth', wavelet='sym8', inverse=False, test=False):
+    # def dwt(self, series, threshold=0.03, mode='smooth', wavelet='db10', inverse=False, test=False):
         series = np.array(series).ravel()
         coeffs = pywt.wavedec(data=series, wavelet=wavelet, mode=mode)
-        coeffs[1:] = [pywt.threshold(i, value=threshold*np.mean(series), mode='soft') for i in coeffs[1:]]
-        # coeffs[1:] = [pywt.threshold(i, value=threshold*np.nanmax(series), mode='soft') for i in coeffs[1:]]
+        # coeffs[1:] = [pywt.threshold(i, value=threshold*np.mean(series), mode='soft') for i in coeffs[1:]]
+        coeffs[1:] = [pywt.threshold(i, value=threshold * (np.median(np.abs(i))/0.6745) * np.sqrt(2 * np.log(len(i))), mode='hard') for i in coeffs[1:]]
         self.series = pywt.waverec(coeffs=coeffs, wavelet=wavelet, mode=mode)
         if len(series) % 2 != 0:
             return self.series[:-1]
