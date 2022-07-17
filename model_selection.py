@@ -17,12 +17,13 @@ from utils import *
 
 class BestModelSearch:
 
-    def __init__(self, dataset_name=None, dataset=None, test_size=0.2, gap=0, worker_id=1):
+    def __init__(self, dataset_name=None, dataset=None, test_size=0.2, gap=0, log_return=False, worker_id=1):
 
         self.dataset_name = dataset_name
         self.dataset = dataset
         self.test_size = test_size
         self.gap = gap
+        self.log_return = log_return
         self.worker_id = worker_id
 
         self.transform = Transformation()
@@ -56,14 +57,22 @@ class BestModelSearch:
         try:
             if transform_threshold:
                 # if threshold > 0, do transformation
-                series_transformed = self.transform.dwt(series[:-1], threshold=transform_threshold)
+                if isinstance(transform_threshold, str):
+                    series_transformed = self.transform.dwt(series[:-1], wavelet=transform_threshold)
+                else:
+                    series_transformed = self.transform.dwt(series[:-1], threshold=transform_threshold)
                 series_transformed = np.concatenate((series_transformed, series[-1:, ]))
             else:
                 series_transformed = series
 
+            #
+            if self.log_return:
+                series_transformed = np.diff(np.log(series_transformed.ravel()))
+                # series_transformed = series_transformed[1:]
+
             if regression_data:
                 # data for regression model is shorter because of the lag
-                for i in range(len(series) - lags - horizon + 1):
+                for i in range(len(series_transformed) - lags - horizon + 1):
                     end_idx = i + lags + horizon
                     data.append(series[i: end_idx])
                     data_transformed.append(series_transformed[i: end_idx])
@@ -106,17 +115,19 @@ class BestModelSearch:
             # test_y = y[-1 * step_size:]
             test_y = series[end_idx + self.gap - 1]
 
-            yield train_Xt, train_yt.ravel(), test_Xt, test_y.ravel(), i
+            yield train_Xt, train_yt.ravel(), test_Xt, test_y.ravel(), X, y, i
 
-    def fit_predict(self, model_name, model, param, item, test_len, iteration=10, horizon=1, retrain_window=10):
-        train_Xt, train_yt, test_Xt, test_y, idx = item
-        # step_size = int(test_len / iteration)
+    def fit_predict(self, model_name, model, param, item, test_len, iteration=7, horizon=1, retrain_window=10):
+        train_Xt, train_yt, test_Xt, test_y, X, y, idx = item
+        # print(np.array(train_Xt).shape, np.array(train_yt).shape, np.array(test_Xt).shape, np.array(test_y).shape, np.array(X).shape, np.array(y).shape)
+        
         if test_len <= 10:
             retrain_window = 1
         elif test_len <= 50:
              retrain_window = int(test_len / 5)
         else:
             retrain_window = 10
+        retrain_window = int(test_len / iteration)
 
         fit_model = idx % retrain_window == 0
 
@@ -126,7 +137,7 @@ class BestModelSearch:
                 # fitting model
                 if model_name in settings.regression_models:
                     if model_name in ['GRU', 'LSTM']:
-                        param.update({'feature_num': train_Xt.shape[1]})
+                        param.update({'feature_num': train_Xt.shape[1], 'batch_size': int(train_Xt.shape[0]/100)+1})
                     model = self.regression_models[model_name]()
                     model.set_params(**param)
                     model.fit(train_Xt, train_yt)
@@ -150,7 +161,7 @@ class BestModelSearch:
                 if model_name in ['GRU', 'LSTM']:
                     model.fit(train_Xt[-1:], train_yt[-1:])
                 if model_name in settings.forecasting_models:
-                    model.update(pd.Series(train_yt[-1], index=[len(train_yt) - 1]), update_params=True)
+                    model.update(pd.DataFrame(train_yt[-1].reshape(-1, 1), index=[len(train_yt) - 1]), update_params=True)
 
             # predicting
             if model_name in settings.regression_models:
@@ -161,11 +172,26 @@ class BestModelSearch:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
 
-        if isinstance(prediction, pd.Series):
+        if isinstance(prediction, (pd.Series, pd.DataFrame)):
             prediction = prediction.values
         if isinstance(prediction, (np.floating, float)):
-            return model, [prediction]
-        return model, prediction
+            prediction = [prediction]
+
+        log_pred = prediction
+        if self.log_return:
+        # transform log return back to actual value
+            if model_name in ['AutoETS', 'NaiveForecaster']:
+                prediction = np.exp(prediction) * y[-2: -1]
+            else:
+                prediction = np.exp(prediction) * y[-1:]
+
+        # print(prediction)
+
+        # print('y[-1]', y[-1], y[-2])
+        # print(test_Xt, test_y)
+        # print(train_Xt, train_yt[idx], 'train?????')
+
+        return model, prediction, log_pred
 
     # --------------------------------------------------
     # series: entire time series
@@ -176,19 +202,22 @@ class BestModelSearch:
 
             model_name, model, param, lag, threshold, horizon = list(model_value.values())
 
-            # self.y = series[lag:]
-            # train_y, test_y = train_test_split(self.y, test_size=self.test_size, shuffle=False)
-
-            predictions, trues = [], []
+            predictions, trues, log_predictions = [], [], []
             start_time = time.time()
             regression_data = model_name in self.regression_models
             for item in self.gen_train_test(series, lag, threshold, self.test_size, regression_data=regression_data):
 
-                model, prediction = self.fit_predict(model_name, model, param, item, self.test_size)
-                predictions.append(prediction.ravel()[0])
-                trues.append(item[-2])
+                try:
+                    model, prediction, log_pred = self.fit_predict(model_name, model, param, item, self.test_size)
+                    predictions.append(prediction.ravel()[0])
+                    log_predictions.append(log_pred)
+                    trues.append(item[-4])
+                except Exception as e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
 
             predictions = np.array(predictions, dtype=float)
+            log_predictions = np.array(log_predictions, dtype=float)
             trues = np.array(trues, dtype=float)
 
             p_metric = Performance_metrics(true_y=trues, predict_y=predictions)
@@ -200,13 +229,17 @@ class BestModelSearch:
             logger.debug(f'Worker {self.worker_id}| takes {elasped_time:.2f}s on ({self.dataset_name}:{model_name})\n')
 
             additional_info = {}
-            additional_info['retrain_time'] = elasped_time
+            additional_info['retrain_time'] = round(elasped_time, 4)
             if model_name in ['RandomForestRegressor']:
                 additional_info['feature_importance'] = model.feature_importances_.tolist()
+            if model_name in ['AutoETS']:
+                additional_info['fitted_params'] = model.get_fitted_params()
+            elif model_name in ['ElasticNet', 'LinearSVR', 'KNeighborsRegressor', 'RandomForestRegressor', 'MLPRegressor']:
+                additional_info['fitted_params'] = model.get_params()
 
             # save best model testing result
-            transformed = 'transformed' if threshold > 0 else 'untransformed'
-            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), lags=lag, horizon=horizon, threshold=threshold, best_params=param, additional_info=additional_info)
+            transformed = 'transformed' if isinstance(threshold, str) else 'untransformed'
+            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), log_prediction=log_predictions, lags=lag, horizon=horizon, threshold=threshold, best_params=param, additional_info=additional_info)
             self.save_scores_info(scores=p_metric.scores, model_name=model_name)
 
     # ----------------------------------------------------
@@ -236,29 +269,44 @@ class BestModelSearch:
         for lag, horizon, threshold in threshold_lag:
             for param in params:
                 try:
-                    scores = []
+                    # scores = []
+                    predictions, trues = [], []
                     model = self.regression_models[model_name] if regression_data else self.forecasting_models[model_name]
 
                     # generate cross validation data
                     for item in self.gen_train_test(series, lag, threshold, self.test_size, regression_data=regression_data):
 
-                        model, pred = self.fit_predict(model_name, model, param, item, self.test_size)
+                        model, pred, log_pred = self.fit_predict(model_name, model, param, item, self.test_size)
 
-                        score = p_metric.one_measure(scoring=scoring, true_y=item[-2], pred_y=pred)
-                        scores.append(score)
+                        predictions.append(pred.ravel()[0])
+                        trues.append(item[-4])
+                        # print(item[-4])
+                        # print('======')
+
+                        # score = p_metric.one_measure(scoring=scoring, true_y=item[-4], pred_y=pred)
+                    # print(trues, predictions)
+                    scores = p_metric.one_measure(scoring=scoring, true_y=trues, pred_y=predictions)
+
+                        # scores.append(score)
 
                 except Exception as e:
                     exc_type, exc_obj, exc_tb = sys.exc_info()
-                    logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
+                    logger.error(f'({model_name}[{threshold}]:{exc_tb.tb_lineno}) {e}')
+                    scores = np.inf
+                    break
 
                 # update best model's information
-                if np.mean(scores) < best_score:
-                    best_score = np.mean(scores)
+                # if np.mean(scores) < best_score:
+                #     best_score = np.mean(scores)
+
+                if scores < best_score:
+                    best_score = scores
                     best_data['best_model'] = model
                     best_data['best_param'] = param
                     best_data['best_lag'] = lag
                     best_data['best_threshold'] = threshold
                     best_data['best_horizon'] = horizon
+        # exit()
 
         return best_data
 
@@ -269,8 +317,10 @@ class BestModelSearch:
 
         # save training set and testing set information
         self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
-        self.record.insert(name=self.dataset_name, series=self.dataset)
-        self.record.insert(train_y=self.train_y, test_y=self.test_y, test_size=self.test_size, gap=self.gap)
+        logr_train_y, logr_test_y = train_test_split(np.diff(np.log(series.ravel())), test_size=self.test_size, shuffle=False)
+        self.record.insert(name=self.dataset_name, series=self.dataset, test_size=self.test_size, gap=self.gap)
+        self.record.insert(train_y=self.train_y, test_y=self.test_y, logr_train_y=logr_train_y, logr_test_y=logr_test_y)
+        self.record.insert(is_log_return=self.log_return, threshold_lag=threshold_lag)
 
         best_data = dict()
         for model_name in self.tuning_models:
@@ -281,12 +331,13 @@ class BestModelSearch:
 
 class MultiWork:
 
-    def __init__(self, dataset, lags=range(1, 4), thresholds=np.arange(0.04, 0.16, 0.04), gap=22, worker_num=1, warning_suppressing=False):
+    def __init__(self, dataset, lags=range(1, 4), thresholds=np.arange(0.04, 0.16, 0.04), gap=22, log_return=False, worker_num=1, warning_suppressing=False):
         self.dataset = list(dataset.items())
         self.worker_num = worker_num
         self.lags = lags
         self.thresholds = thresholds
         self.gap = gap
+        self.log_return = log_return
 
         self.warning_suppressing(ignore=warning_suppressing)
 
@@ -301,7 +352,7 @@ class MultiWork:
         for l in lags:
             for h in horizons:
                 for t in thresholds:
-                    hyper_threshold_lag.append((l, h, round(t, 4)))
+                    hyper_threshold_lag.append((l, h, t))
         return hyper_threshold_lag
 
     def work(self, dataset_item):
@@ -310,7 +361,7 @@ class MultiWork:
         # time series name and value
         name, dataset = dataset_item
 
-        if len(dataset) > 100:
+        if len(dataset) > 200:
             test_size = int(len(dataset) / 5) 
         else:
             test_size = 20
@@ -321,7 +372,7 @@ class MultiWork:
             worker_id = 1
         logger.info(f'Worker {worker_id}| is processing {name}(len: {len(dataset)}, test size: {test_size})')
 
-        bms = BestModelSearch(dataset_name=name, dataset=dataset, test_size=test_size, gap=self.gap, worker_id=worker_id)
+        bms = BestModelSearch(dataset_name=name, dataset=dataset, test_size=test_size, gap=self.gap, log_return=self.log_return, worker_id=worker_id)
 
         # hyperparameter tuning with/without transformation
         for label, thresholds in zip(['Untransformed', 'Transformed'], [[0.], self.thresholds]):
@@ -371,17 +422,19 @@ if __name__ == '__main__':
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=2)
-    parser.add_argument("--data_length", help="minimum length of data", type=int, default=1300)
+    parser.add_argument("--data_num", help="number of data", type=int, default=3)
+    parser.add_argument("--data_length", help="minimum length of data", type=int, default=100)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
 
-    np.random.seed(123)
 
     if args.test:
-        args.lags = [1, 2]
-        args.thresholds = [0.005, 0.01]
-        args.worker = 2
+        args.lags = [1, 7, 20]
+        args.thresholds = [0.05, 0.1]
+        # args.thresholds = ['haar', 'db1', 'db2', 'db4', 'db8', 'db16', 'sym4', 'sym8', 'coif1', 'coif3']
+        args.thresholds = ['haar', 'db1', 'db2', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
+        args.thresholds = ['db4', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
+        args.worker = 3
         ignore_warn = True
         logger.info('[TEST MODE]')
     else:
@@ -389,12 +442,16 @@ if __name__ == '__main__':
             args.thresholds = np.arange(args.threshold_step, 11 * args.threshold_step, args.threshold_step)
         ignore_warn = True
 
+    log_return = True
+
     logger.info(f'Models: {list(settings.regression_models.keys())+list(settings.forecasting_models.keys())}')
-    logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}, Gap: {args.gap}')
+    logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}, Gap: {args.gap}, Log Return: {log_return}')
 
     # load time series
-    # datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
-    datasets = load_m4_data(min_length=args.data_length, max_length=1500, n_set=args.data_num, freq='Daily')
+    datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
+    # name = list(range(51, 61)) + list(range(201, 211)) + list(range(1661, 1671)) + list(range(2121, 2131)) + list(range(3621, 3631))
+    # name = [f'D{n}' for n in name]
+    # datasets = load_m4_data(min_length=args.data_length, max_length=1500, n_set=args.data_num, freq='Daily', name=name)
 
-    mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, gap=args.gap, worker_num=args.worker, warning_suppressing=ignore_warn)
+    mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, gap=args.gap, log_return=log_return, worker_num=args.worker, warning_suppressing=ignore_warn)
     mw.run()
