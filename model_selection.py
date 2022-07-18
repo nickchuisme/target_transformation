@@ -50,7 +50,7 @@ class BestModelSearch:
         self.metric_info = pd.concat([self.metric_info, this], axis=1)
 
     # generate transformed Xt and yt from traget y
-    def gen_feature_data(self, series, lags=2, horizon=1, transform_threshold=0.005, regression_data=False):
+    def gen_feature_data(self, series, lags=2, horizon=1, transform_threshold=0.005, regression_data=False, isnaive=False):
         data = []
         data_transformed = []
 
@@ -66,7 +66,7 @@ class BestModelSearch:
                 series_transformed = series
 
             #
-            if self.log_return:
+            if self.log_return and not isnaive:
                 series_transformed = np.diff(np.log(series_transformed.ravel()))
                 # series_transformed = series_transformed[1:]
 
@@ -93,7 +93,7 @@ class BestModelSearch:
 
         return X, y, Xt, yt
 
-    def gen_train_test(self, series, lag, threshold, test_len, iteration=10, regression_data=False):
+    def gen_train_test(self, series, lag, threshold, test_len, iteration=10, regression_data=False, isnaive=False):
         # generate expanding window validation set
         iteration = test_len #### make step size = 1
         step_size = int(test_len / iteration)
@@ -106,7 +106,7 @@ class BestModelSearch:
                 y = series[:end_idx]
 
             # generate (un)transformed features X1, X2, ... by target y
-            X, y, Xt, yt = self.gen_feature_data(y, lags=lag, transform_threshold=threshold, regression_data=regression_data)
+            X, y, Xt, yt = self.gen_feature_data(y, lags=lag, transform_threshold=threshold, regression_data=regression_data, isnaive=isnaive)
 
             train_Xt = Xt[:-1 * step_size]
             train_yt = yt[:-1 * step_size]
@@ -168,6 +168,7 @@ class BestModelSearch:
                 prediction = model.predict(test_Xt)
             elif model_name in settings.forecasting_models:
                 prediction = model.predict(fh=[horizon])
+
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
@@ -178,7 +179,7 @@ class BestModelSearch:
             prediction = [prediction]
 
         log_pred = prediction
-        if self.log_return:
+        if self.log_return and model_name != 'NaiveForecaster':
         # transform log return back to actual value
             if model_name in ['AutoETS', 'NaiveForecaster']:
                 prediction = np.exp(prediction) * y[-2: -1]
@@ -205,7 +206,7 @@ class BestModelSearch:
             predictions, trues, log_predictions = [], [], []
             start_time = time.time()
             regression_data = model_name in self.regression_models
-            for item in self.gen_train_test(series, lag, threshold, self.test_size, regression_data=regression_data):
+            for item in self.gen_train_test(series, lag, threshold, self.test_size, regression_data=regression_data, isnaive=model_name=='NaiveForecaster'):
 
                 try:
                     model, prediction, log_pred = self.fit_predict(model_name, model, param, item, self.test_size)
@@ -214,7 +215,7 @@ class BestModelSearch:
                     trues.append(item[-4])
                 except Exception as e:
                     exc_type, exc_obj, exc_tb = sys.exc_info()
-                    logger.error(f'({model_name}:{exc_tb.tb_lineno}) {e}')
+                    logger.error(f'({model_name}[{threshold}]:{exc_tb.tb_lineno}) {e}')
 
             predictions = np.array(predictions, dtype=float)
             log_predictions = np.array(log_predictions, dtype=float)
@@ -239,7 +240,7 @@ class BestModelSearch:
 
             # save best model testing result
             transformed = 'transformed' if isinstance(threshold, str) else 'untransformed'
-            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions.tolist(), log_prediction=log_predictions, lags=lag, horizon=horizon, threshold=threshold, best_params=param, additional_info=additional_info)
+            self.record.insert_model_info(transformed, model_name, **p_metric.scores, prediction=predictions, log_prediction=log_predictions, lags=lag, horizon=horizon, threshold=threshold, best_params=param, additional_info=additional_info)
             self.save_scores_info(scores=p_metric.scores, model_name=model_name)
 
     # ----------------------------------------------------
@@ -274,14 +275,12 @@ class BestModelSearch:
                     model = self.regression_models[model_name] if regression_data else self.forecasting_models[model_name]
 
                     # generate cross validation data
-                    for item in self.gen_train_test(series, lag, threshold, self.test_size, regression_data=regression_data):
+                    for item in self.gen_train_test(series, lag, threshold, self.test_size, regression_data=regression_data, isnaive=model_name=='NaiveForecaster'):
 
                         model, pred, log_pred = self.fit_predict(model_name, model, param, item, self.test_size)
 
                         predictions.append(pred.ravel()[0])
                         trues.append(item[-4])
-                        # print(item[-4])
-                        # print('======')
 
                         # score = p_metric.one_measure(scoring=scoring, true_y=item[-4], pred_y=pred)
                     # print(trues, predictions)
@@ -422,7 +421,7 @@ if __name__ == '__main__':
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=3)
+    parser.add_argument("--data_num", help="number of data", type=int, default=2)
     parser.add_argument("--data_length", help="minimum length of data", type=int, default=100)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
@@ -434,7 +433,7 @@ if __name__ == '__main__':
         # args.thresholds = ['haar', 'db1', 'db2', 'db4', 'db8', 'db16', 'sym4', 'sym8', 'coif1', 'coif3']
         args.thresholds = ['haar', 'db1', 'db2', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
         args.thresholds = ['db4', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
-        args.worker = 3
+        args.worker = 2
         ignore_warn = True
         logger.info('[TEST MODE]')
     else:
@@ -442,7 +441,7 @@ if __name__ == '__main__':
             args.thresholds = np.arange(args.threshold_step, 11 * args.threshold_step, args.threshold_step)
         ignore_warn = True
 
-    log_return = True
+    log_return = False
 
     logger.info(f'Models: {list(settings.regression_models.keys())+list(settings.forecasting_models.keys())}')
     logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}, Gap: {args.gap}, Log Return: {log_return}')
