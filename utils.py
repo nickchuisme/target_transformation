@@ -107,8 +107,8 @@ def save_json(method):
 class Performance_metrics:
 
     def __init__(self, true_y=None, predict_y=None):
-        self.true_y = np.array(true_y)
-        self.predict_y = np.array(predict_y)
+        self.true_y = np.array(true_y).ravel()
+        self.predict_y = np.array(predict_y).ravel()
 
         self.estimators = {
             # 'explained_variance_score': metrics.explained_variance_score,
