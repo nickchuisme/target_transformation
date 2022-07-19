@@ -198,5 +198,135 @@ class Records:
                 logger.warn(f'Cannot save ndarray into JSON, error:{e}, {self.record}')
             file.write('\n')
 
-# if __name__ == "__main__":
-#     load_btc_pkl(freq='d')
+class DeTrendSeason:
+
+    def __init__(self):
+        self.a = None
+        self.b = None
+
+    def detrend(self, insample_data):
+        """
+        Calculates a & b parameters of LRL
+        :param insample_data:
+        :return:
+        """
+        x = np.arange(len(insample_data))
+        self.a, self.b = np.polyfit(x, insample_data, 1)
+        return [insample_data[i] - ((self.a*i) + self.b) for i in range(len(insample_data))]
+
+    def add_trend(self, ts, forecast, fh=1):
+        for i in range(0, fh):
+            forecast[i] = forecast[i] + ((self.a * (len(ts) + i + 1)) + self.b)
+        return forecast
+
+    def deseasonalize(self, original_ts, ppy):
+        original_ts = pd.Series(original_ts) ###################
+        """
+        Calculates and returns seasonal indices
+        :param original_ts: original data
+        :param ppy: periods per year
+        :return:
+        """
+        """
+        # === get in-sample data
+        original_ts = original_ts[:-out_of_sample]
+        """
+        if self.seasonality_test(original_ts, ppy):
+            # print("seasonal")
+            # ==== get moving averages
+            ma_ts = self.moving_averages(original_ts, ppy)
+
+            # ==== get seasonality indices
+            le_ts = original_ts * 100 / ma_ts
+            le_ts = np.hstack((le_ts, np.full((ppy - (len(le_ts) % ppy)), np.nan)))
+            le_ts = np.reshape(le_ts, (-1, ppy))
+            si = np.nanmean(le_ts, 0)
+            norm = np.sum(si) / (ppy * 100)
+            si = si / norm
+        else:
+            # print("NOT seasonal")
+            si = np.full(ppy, 100)
+
+        return si
+
+    def moving_averages(self, ts_init, window):
+        """
+        Calculates the moving averages for a given TS
+        :param ts_init: the original time series
+        :param window: window length
+        :return: moving averages ts
+        """
+        """
+        As noted by Professor Isidro Lloret Galiana:
+        line 82:
+        if len(ts_init) % 2 == 0:
+        
+        should be changed to
+        if window % 2 == 0:
+        
+        This change has a minor (less then 0.05%) impact on the calculations of the seasonal indices
+        In order for the results to be fully replicable this change is not incorporated into the code below
+        """
+        
+        if len(ts_init) % 2 == 0:
+            # ts_ma = pd.rolling_mean(ts_init, window, center=True)
+            ts_ma = ts_init.rolling(window, center=True).mean()
+            ts_ma = ts_ma.rolling(2, center=True).mean()
+            ts_ma = np.roll(ts_ma, -1)
+        else:
+            # ts_ma = pd.rolling_mean(ts_init, window, center=True)
+            ts_ma = ts_init.rolling(window, center=True).mean()
+
+        return ts_ma
+
+    def seasonality_test(self, original_ts, ppy):
+        """
+        Seasonality test
+        :param original_ts: time series
+        :param ppy: periods per year
+        :return: boolean value: whether the TS is seasonal
+        """
+        
+        # Note that the statistical benchmarks, implemented in R, use the same seasonality test, but with ACF1 being squared
+        # This difference between the two scripts was mentioned after the end of the competition and, therefore, no changes have been made 
+        # to the existing code so that the results of the original submissions are reproducible
+        s = self.acf(original_ts, 1)
+        for i in range(2, ppy):
+            s = s + (self.acf(original_ts, i) ** 2)
+
+        limit = 1.645 * (np.sqrt((1 + 2 * s) / len(original_ts)))
+
+        return (np.abs(self.acf(original_ts, ppy))) > limit
+
+    def acf(self, data, k):
+        """
+        Autocorrelation function
+        :param data: time series
+        :param k: lag
+        :return:
+        """
+        m = np.mean(data)
+        s1 = 0
+        for i in range(k, len(data)):
+            s1 = s1 + ((data[i] - m) * (data[i - k] - m))
+
+        s2 = 0
+        for i in range(0, len(data)):
+            s2 = s2 + ((data[i] - m) ** 2)
+
+        return float(s1 / s2)
+
+    # remove seasonality
+    def remove_seanson(self, ts, freq):
+        seasonality_in = self.deseasonalize(ts, freq)
+
+        for i in range(0, len(ts)):
+            ts[i] = ts[i] * 100 / seasonality_in[i % freq]
+        return ts
+
+    def add_season(self, ts, forecast, freq, fh=1):
+        seasonality_in = self.deseasonalize(ts, freq)
+
+        for i in range(len(ts), len(ts) + fh):
+            forecast[i - len(ts)] = forecast[i - len(ts)] * seasonality_in[i % freq] / 100
+        return forecast
