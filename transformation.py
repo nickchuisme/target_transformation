@@ -2,6 +2,8 @@ import numpy as np
 from scipy import stats
 from scipy.special import inv_boxcox
 import pywt
+import pandas as pd
+from PyEMD import EMD
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import MaxAbsScaler
@@ -92,3 +94,19 @@ class Transformation:
         if len(series) % 2 != 0:
             return self.series[:-1]
         return self.series
+
+    def emd_transf(self, train_data):
+        # generate IMFs from CEEMDAN decomposition
+        emd = EMD() 
+        emd.emd(np.array(train_data).ravel(), max_imf=4)
+        imfs, res = emd.get_imfs_and_residue() # Extract cimfs and residue
+        imfs = pd.DataFrame(imfs).T
+        res = pd.DataFrame(res)
+        imfs_df = pd.concat([imfs, res], axis=1)
+
+        # IMF1
+        imf1 = imfs_df.iloc[:, 0]
+        # Residual
+        residual = imfs_df.iloc[:, 1:].sum(axis=1)
+
+        return np.array(residual).ravel()
