@@ -1,4 +1,3 @@
-import time
 import numpy as np
 import tensorflow
 
@@ -8,14 +7,12 @@ try:
     from tensorflow.keras.layers import GRU, LSTM, Bidirectional, Dense, Dropout
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.optimizers import Adam
-    from tensorflow.keras import backend
 except:
     from keras import Input
     from keras.callbacks import EarlyStopping
     from keras.layers import GRU, LSTM, Bidirectional, Dense, Dropout
     from keras.models import Sequential
     from keras.optimizers import Adam
-    from keras import backend
 
 from sklearn import ensemble, linear_model, neighbors, neural_network, svm
 from sktime.forecasting.arima import AutoARIMA
@@ -96,7 +93,6 @@ class GRU_model:
         return result
 
     def reset_model(self):
-        # backend.clear_session()
         self.model = self.init_model
 
 class LSTM_model(GRU_model):
@@ -126,7 +122,6 @@ class LSTM_model(GRU_model):
 
 
 regression_models = {
-
     'ElasticNet': linear_model.ElasticNet,
 
     'LinearSVR': svm.LinearSVR,
@@ -137,7 +132,6 @@ regression_models = {
     'MLPRegressor': neural_network.MLPRegressor,
     # 'GRU': GRU_model,
     # 'LSTM': LSTM_model,
-
 }
 
 forecasting_models = {
@@ -150,10 +144,8 @@ forecasting_models = {
 params = {
     'ElasticNet': {
         'alpha': [0.01, 0.1, 1, 10],
-        # 'alpha': [1],
         'l1_ratio': np.arange(0.1, 1., 0.2),
         'tol': [0.001],
-        # 'random_state': [0],
         'selection': ['random'],
     },
 
@@ -167,31 +159,31 @@ params = {
     },
 
     'RandomForestRegressor': {
-        'n_estimators': [10, 50, 100, 200],
+        'n_estimators': [10, 50, 100],
         # 'max_features': ['auto', 'sqrt', 'log2'],
-        'ccp_alpha': np.arange(0, 1, 0.4),
+        'ccp_alpha': [0.3, 0.6],
         'bootstrap': [False],
     },
 
     'MLPRegressor': {
-        # 'hidden_layer_sizes': [(i, ) for i in range(1, 10)],
-        'hidden_layer_sizes': [(10, 10, 10,), (10, 10), (20, 10), (10,), (20,), ],
+        'hidden_layer_sizes': [(12, 6, 2, ), (12, 6, ), (20, 12, ), (12, ), (20, ), ],
         # 'alpha': [0, 0.001, 0.01, 0.1],
         # 'activation': ['logistic', 'relu', 'tanh', 'identity'],
+        'activation': ['relu', 'tanh', 'identity'],
         # 'solver': ['lbfgs', 'adam', 'sgd'],
-        # 'random_state': [0, 1],
         'shuffle': [False],
         'max_iter': [500],
         'learning_rate_init': [0.1],
         'learning_rate': ['adaptive'],
+        'early_stopping': [True],
     },
     'GRU': {
-        'layers': [(20, ), ],
+        'layers': [(12, ), ],
         'lr': [0.1],
         'dropout': [True],
     },
     'LSTM': {
-        'layers': [(20, ), ],
+        'layers': [(12, ), ],
         'lr': [0.1],
         'dropout': [True],
     },
@@ -202,7 +194,7 @@ params = {
     },
     'AutoETS': {
         'auto': [True],
-        # 'sp': [12], # monthly
+        'sp': [1, 12], # monthly
         # 'sp': [7], # daily
     },
     'NaiveForecaster': {
