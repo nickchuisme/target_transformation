@@ -60,6 +60,7 @@ class BestModelSearch:
         data_transformed = []
         
         try:
+            # detrend and deseasonal
             if self.detrend:
                 raw_series = np.copy(series[:-1])
                 raw_series = self.de_ts.remove_seanson(raw_series, freq=12)
@@ -79,6 +80,7 @@ class BestModelSearch:
                     series_transformed = self.transform.dwt(input_y, threshold=transform_threshold)
                 # series_transformed = self.transform.emd_transf(input_y)
 
+                # concat test_y
                 series_transformed = np.concatenate((series_transformed, series[-1:, ]))
             else:
                 if self.detrend:
@@ -117,12 +119,11 @@ class BestModelSearch:
     # use target y to generate training part and test part
     # regression_data: the regression model and the forecasting model have different input length of time series, especially lag is greater than 0
     # isnaive: check if doing naive forecaster
-    def gen_train_test(self, series, lag, threshold, test_len, iteration=10, regression_data=False, isnaive=False):
+    def gen_train_test(self, series, lag, threshold, test_len, regression_data=False, isnaive=False):
         # generate expanding window validation set
-        iteration = test_len #### make step size = 1
-        step_size = int(test_len / iteration)
+        step_size = 1
 
-        for i in range(iteration):
+        for i in range(test_len):
             end_idx = -1 * test_len + (i + 1) * step_size - self.gap
             if end_idx == 0:
                 y = series[:]
@@ -150,10 +151,9 @@ class BestModelSearch:
         if test_len <= 10:
             retrain_window = 1
         elif test_len <= 50:
-             retrain_window = int(test_len / 5)
+             retrain_window = int(test_len / iteration) + 1
         else:
             retrain_window = 10
-        retrain_window = int(test_len / iteration) + 1
 
         fit_model = idx % retrain_window == 0
 
@@ -170,7 +170,7 @@ class BestModelSearch:
                 elif model_name in settings.forecasting_models:
                     model = self.forecasting_models[model_name](**param).fit(train_yt)
             # fitting and last time fitting
-            elif fit_model or (idx + 1 == test_len):
+            elif fit_model:
                 if model_name in settings.regression_models:
                     if model_name in ['GRU', 'LSTM']:
                          model.fit(train_Xt, train_yt)
@@ -249,15 +249,15 @@ class BestModelSearch:
             # additional information
             end_time = time.time()
             elasped_time = end_time - start_time
-            logger.debug(f'Worker {self.worker_id}| takes {elasped_time:.2f}s on ({self.dataset_name}:{model_name})\n')
+            # logger.debug(f'Worker {self.worker_id}| takes {elasped_time:.2f}s on retraining ({self.dataset_name}:{model_name})\n')
 
             additional_info = {}
             additional_info['retrain_time'] = round(elasped_time, 4)
             if model_name in ['RandomForestRegressor']:
                 additional_info['feature_importance'] = model.feature_importances_.tolist()
-            if model_name in ['AutoETS']:
-                additional_info['fitted_params'] = model.get_fitted_params()
-            elif model_name in ['ElasticNet', 'LinearSVR', 'KNeighborsRegressor', 'RandomForestRegressor', 'MLPRegressor']:
+            if model_name in ['GRU', 'LSTM']:
+                additional_info['fitted_params'] = dict()
+            else:
                 additional_info['fitted_params'] = model.get_params()
 
             # save best model testing result
@@ -288,7 +288,10 @@ class BestModelSearch:
         # combinations of model's parameters
         params = list(ParameterGrid(self.params[model_name]))
         regression_data = model_name in self.regression_models
+        if not regression_data:
+            threshold_lag = list(set([(1, 1, tl[-1])for tl in threshold_lag]))
 
+        start = time.time()
         for lag, horizon, threshold in threshold_lag:
             for param in params:
                 try:
@@ -319,6 +322,8 @@ class BestModelSearch:
                     best_data['best_lag'] = lag
                     best_data['best_threshold'] = threshold
                     best_data['best_horizon'] = horizon
+
+        logger.debug(f'Worker {self.worker_id}| takes {time.time() - start:.2f}s on tuning ({self.dataset_name}:{model_name})')
 
         return best_data
 
@@ -438,14 +443,14 @@ if __name__ == '__main__':
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=120)
+    parser.add_argument("--data_num", help="number of data", type=int, default=1200)
     parser.add_argument("--data_length", help="minimum length of data", type=int, default=100)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
 
 
     if args.test:
-        args.lags = [1, 7, 20]
+        args.lags = [1, 12]
         # args.lags = [12]
         # args.thresholds = [0.5]
         # args.thresholds = ['haar', 'db1', 'db2', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
