@@ -2,6 +2,8 @@ import numpy as np
 from scipy import stats
 from scipy.special import inv_boxcox
 import pywt
+import pandas as pd
+from PyEMD import EMD
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import MaxAbsScaler
@@ -79,12 +81,32 @@ class Transformation:
         self.series = np.array(series).ravel()
         return self.series
 
-    def dwt(self, series, threshold=0.03, mode='smooth', wavelet='sym8', inverse=False, test=False):
+    ## suggest 0.5 -> origin
+    def dwt(self, series, threshold=0.5, mode='smooth', wavelet='sym8', inverse=False, test=False):
         series = np.array(series).ravel()
         coeffs = pywt.wavedec(data=series, wavelet=wavelet, mode=mode)
-        coeffs[1:] = [pywt.threshold(i, value=threshold*np.mean(series), mode='soft') for i in coeffs[1:]]
-        # coeffs[1:] = [pywt.threshold(i, value=threshold*np.nanmax(series), mode='soft') for i in coeffs[1:]]
+        # coeffs[1:] = [pywt.threshold(i, value=threshold*np.mean(series), mode='soft') for i in coeffs[1:]]
+        threshold = threshold * (np.median(np.abs(coeffs[-1]))/0.6745) * np.sqrt(2 * np.log(len(coeffs[-1])))
+
+        # coeffs[1:] = [pywt.threshold(i, value=threshold * (np.median(np.abs(i))/0.6745) * np.sqrt(2 * np.log(len(i))), mode='hard') for i in coeffs[1:]]
+        coeffs[1:] = [pywt.threshold(i, value=threshold, mode='hard') for i in coeffs[1:]]
         self.series = pywt.waverec(coeffs=coeffs, wavelet=wavelet, mode=mode)
         if len(series) % 2 != 0:
             return self.series[:-1]
         return self.series
+
+    def emd_transf(self, train_data):
+        # generate IMFs from CEEMDAN decomposition
+        emd = EMD() 
+        emd.emd(np.array(train_data).ravel(), max_imf=4)
+        imfs, res = emd.get_imfs_and_residue() # Extract cimfs and residue
+        imfs = pd.DataFrame(imfs).T
+        res = pd.DataFrame(res)
+        imfs_df = pd.concat([imfs, res], axis=1)
+
+        # IMF1
+        imf1 = imfs_df.iloc[:, 0]
+        # Residual
+        residual = imfs_df.iloc[:, 1:].sum(axis=1)
+
+        return np.array(residual).ravel()
