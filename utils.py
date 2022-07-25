@@ -35,6 +35,7 @@ def load_m3_data(min_length=100, n_set=5):
     datasets = dict()
     data = load_m3monthly()
     unique_keys = data['key'].unique().tolist()
+    n_set = np.minimum(len(unique_keys), n_set)
     unique_keys = np.random.choice(unique_keys, size=n_set, replace=False)
 
     logger.info('Loading M3 dataset')

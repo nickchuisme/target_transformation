@@ -8,6 +8,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import ParameterGrid, train_test_split
+from statsmodels.tsa.stattools import adfuller, kpss
 from tabulate import tabulate
 
 import settings
@@ -27,7 +28,7 @@ class BestModelSearch:
         self.detrend = detrend
         self.worker_id = worker_id
 
-        self.transform = Transformation()
+        self.transform = Transformation(dataset)
         self.de_ts = DeTrendSeason()
 
         self.train_X = None
@@ -58,7 +59,8 @@ class BestModelSearch:
     def gen_feature_data(self, series, lags=2, horizon=1, transform_threshold=0.005, regression_data=False, isnaive=False):
         data = []
         data_transformed = []
-        
+        feature = np.array([])
+
         try:
             # detrend and deseasonal
             if self.detrend:
@@ -75,7 +77,8 @@ class BestModelSearch:
                     input_y = series[:-1]
 
                 if isinstance(transform_threshold, str):
-                    series_transformed = self.transform.dwt(input_y, wavelet=transform_threshold)
+                    # series_transformed = self.transform.dwt(input_y, wavelet=transform_threshold)
+                    feature, series_transformed = self.transform.dwt_feature(input_y, wavelet=transform_threshold)
                 else:
                     series_transformed = self.transform.dwt(input_y, threshold=transform_threshold)
                 # series_transformed = self.transform.emd_transf(input_y)
@@ -96,18 +99,32 @@ class BestModelSearch:
                 # data for regression model is shorter because of the lag
                 for i in range(len(series_transformed) - lags - horizon + 1):
                     end_idx = i + lags + horizon
-                    data.append(series[i: end_idx])
-                    data_transformed.append(series_transformed[i: end_idx])
+                    if feature.any():
+                        data.append(np.concatenate((feature[end_idx-2, :].ravel(), series[i: end_idx].ravel())))
+                        data_transformed.append(np.concatenate((feature[end_idx-2, :].ravel(), series_transformed[i: end_idx].ravel())))
+                    else:
+                        data.append(series[i: end_idx])
+                        data_transformed.append(series_transformed[i: end_idx])
 
-                X = np.array(data)[:, :lags]
-                y = np.array(data)[:, lags:]
+                X = np.array(data)[:, :-1 * horizon]
+                y = np.array(data)[:, -1 * horizon:]
 
-                Xt = np.array(data_transformed)[:, :lags]
-                yt = np.array(data_transformed)[:, lags:]
+                Xt = np.array(data_transformed)[:, :-1 * horizon]
+                yt = np.array(data_transformed)[:, -1 * horizon:]
+
+                # X = np.array(data)[:, :lags]
+                # y = np.array(data)[:, lags:]
+
+                # Xt = np.array(data_transformed)[:, :lags]
+                # yt = np.array(data_transformed)[:, lags:]
             else:
                 X, Xt = [], []
                 y = series.reshape(-1, 1)
                 yt = series_transformed.reshape(-1, 1)
+            # for a, b, c in zip(Xt, yt, y):
+            #     print(a, b, c)
+            # print(series)
+            # exit()
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -253,6 +270,7 @@ class BestModelSearch:
 
             additional_info = {}
             additional_info['retrain_time'] = round(elasped_time, 4)
+            additional_info['dwt_level'] = self.transform.level
             if model_name in ['RandomForestRegressor']:
                 additional_info['feature_importance'] = model.feature_importances_.tolist()
             if model_name in ['GRU', 'LSTM']:
@@ -392,11 +410,20 @@ class MultiWork:
             worker_id = 1
         logger.info(f'Worker {worker_id}| is processing {name}(len: {len(dataset)}, test size: {test_size})')
 
+        try:
+            adf = adfuller(dataset)
+            kpsst = kpss(dataset)
+            logger.info(f'Worker {worker_id}| {name}, ADF: {adf[0] < adf[4]["5%"]}, KPSS: {kpsst[0] < kpsst[3]["5%"]}')
+        except Exception as e:
+            print(e)
+
         # initial model selection class
         bms = BestModelSearch(dataset_name=name, dataset=dataset, test_size=test_size, gap=self.gap, log_return=self.log_return, detrend=self.detrend, worker_id=worker_id)
 
         # hyperparameter tuning with/without transformation
         for label, thresholds in zip(['Untransformed', 'Transformed'], [[0.], self.thresholds]):
+            # if label == 'Untransformed':
+            #     continue
             try:
                 # generate combinations of lags and thresholds
                 threshold_lag = self.gen_hyperparams(lags=self.lags, horizons=[1], thresholds=thresholds)
@@ -443,7 +470,7 @@ if __name__ == '__main__':
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=1200)
+    parser.add_argument("--data_num", help="number of data", type=int, default=260)
     parser.add_argument("--data_length", help="minimum length of data", type=int, default=100)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
@@ -454,16 +481,16 @@ if __name__ == '__main__':
         # args.lags = [12]
         # args.thresholds = [0.5]
         # args.thresholds = ['haar', 'db1', 'db2', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
-        args.thresholds = ['db4', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
+        args.thresholds = ['db5', 'db6', 'db19', 'db20', 'coif2', 'coif3']
         # args.thresholds = ['db4']
-        args.worker = 2
+        args.worker = 3
         ignore_warn = True
         logger.info('[TEST MODE]')
     else:
         ignore_warn = True
 
     log_return = False
-    detrend = True
+    detrend = False
 
     logger.info(f'Models: {list(settings.regression_models.keys())+list(settings.forecasting_models.keys())}')
     logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}, Gap: {args.gap}, Log Return: {log_return}, Detrend & Seasonal: {detrend}')
