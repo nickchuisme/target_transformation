@@ -173,8 +173,6 @@ class BestModelSearch:
              retrain_window = int(test_len / iteration) + 1
         else:
             retrain_window = 10
-        else:
-            retrain_window = 30
 
         fit_model = idx % retrain_window == 0
 
