@@ -190,7 +190,8 @@ params = {
 
     'AutoARIMA': {
         # 'sp': [12], # monthly
-        'sp': [7], # daily
+        # 'sp': [7], # daily
+        'seasonal': [False],
     },
     'AutoETS': {
         'auto': [True],
