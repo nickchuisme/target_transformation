@@ -35,6 +35,7 @@ def load_m3_data(min_length=100, n_set=5):
     datasets = dict()
     data = load_m3monthly()
     unique_keys = data['key'].unique().tolist()
+    unique_keys = np.random.choice(unique_keys, size=n_set, replace=False)
 
     logger.info('Loading M3 dataset')
     for key in tqdm(unique_keys):
@@ -112,7 +113,7 @@ class Performance_metrics:
 
         self.estimators = {
             # 'explained_variance_score': metrics.explained_variance_score,
-            # 'max_error': metrics.max_error,
+            'max_error': metrics.max_error,
             'mean_absolute_error': metrics.mean_absolute_error,
             'mean_squared_error': metrics.mean_squared_error,
             'root_mean_squared_error': self.root_mean_square_error,
