@@ -136,8 +136,8 @@ regression_models = {
 
 forecasting_models = {
     # 'AutoARIMA': AutoARIMA,
-    'AutoETS': AutoETS,
-    'NaiveForecaster': NaiveForecaster,
+    # 'AutoETS': AutoETS,
+    # 'NaiveForecaster': NaiveForecaster,
 }
 
 # hyperparameters for tuning
@@ -152,6 +152,7 @@ params = {
     'LinearSVR': {
         'epsilon': np.arange(0., 1., 0.4),
         'C': [1, 5, 10, 20],
+        # 'dual': [True, False],
     },
     'KNeighborsRegressor': {
         'n_neighbors': [2, 4, 8, 12, 16, 20],
