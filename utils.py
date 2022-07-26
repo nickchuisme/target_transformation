@@ -133,8 +133,7 @@ class Performance_metrics:
         for estimator in self.estimators.keys():
             try:
                 score = self.estimators[estimator](self.true_y, self.predict_y)
-                score = np.nan_to_num(score)
-                self.scores[estimator] = round(score, 3)
+                self.scores[estimator] = round(score, 5)
             except Exception as e:
                 logger.warn(f'({model_name}:{estimator}): {e}')
                 self.scores[estimator] = '-'
@@ -148,7 +147,7 @@ class Performance_metrics:
         else:
             for k, v in self.scores.items():
                 try:
-                    logger.debug(f'{k}: {v:.3f}')
+                    logger.debug(f'{k}: {v:.5f}')
                 except:
                     logger.debug(f'{k}: {v}')
         # logger.debug('\n')
