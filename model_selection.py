@@ -8,6 +8,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import ParameterGrid, train_test_split
+from sklearn.preprocessing import MaxAbsScaler
 from tabulate import tabulate
 
 import settings
@@ -29,6 +30,8 @@ class BestModelSearch:
 
         self.transform = Transformation()
         self.de_ts = DeTrendSeason()
+        self.maxabs_x = MaxAbsScaler()
+        self.maxabs_y = MaxAbsScaler()
 
         self.train_X = None
         self.test_X = None
@@ -59,6 +62,7 @@ class BestModelSearch:
         data = []
         data_transformed = []
 
+        raw = np.copy(series)
 
         feature, series = series[:, :-1], series[:, -1:].ravel()
 
@@ -97,18 +101,27 @@ class BestModelSearch:
 
             if regression_data:
                 # data for regression model is shorter because of the lag
+                X, Xt, y, yt = [], [], [], []
                 for i in range(len(series_transformed) - lags - horizon + 1):
 
                     end_idx = i + lags + horizon
 
-                    # print(raw_feature[i, :].ravel().shape, target[i: end_idx].ravel().shape)
-                    # print(raw_feature[i, :].ravel(), target[i: end_idx].ravel())
                     if lags != 0:
                         data.append(np.concatenate((feature[i, :].ravel(), series[i: end_idx].ravel())))
                         data_transformed.append(np.concatenate((feature[i, :].ravel(), series_transformed[i: end_idx].ravel())))
                     else:
                         data.append(np.concatenate((feature[i, :].ravel(), series[end_idx-1].ravel())))
                         data_transformed.append(np.concatenate((feature[i, :].ravel(), series_transformed[end_idx-1].ravel())))
+
+                ############
+                #     X.append(raw[i: end_idx-1, :].ravel())
+                #     y.append(series[end_idx-1].ravel())
+                #     a = np.concatenate((feature[i: end_idx-1, :], series_transformed[i: end_idx-1].reshape(-1, 1)), axis=1)
+                #     Xt.append(a.ravel())
+                #     yt.append(series_transformed[end_idx-1].ravel())
+ 
+                # return np.array(X), np.array(y), np.array(Xt), np.array(yt)
+
 
                 X = np.array(data)[:, :-1 * horizon]
                 y = np.array(data)[:, -1 * horizon:]
@@ -117,7 +130,7 @@ class BestModelSearch:
                 yt = np.array(data_transformed)[:, -1 * horizon:]
             else:
                 X, Xt = [], []
-                y = target.reshape(-1, 1)
+                y = series.reshape(-1, 1)
                 yt = series_transformed.reshape(-1, 1)
 
         except Exception as e:
@@ -167,12 +180,17 @@ class BestModelSearch:
     def fit_predict(self, model_name, model, param, item, test_len, iteration=7, horizon=1, retrain_window=10):
         train_Xt, train_yt, test_Xt, test_y, X, y, idx = item
 
+        if model_name not in ['RandomForestRegressor']:
+            train_Xt = self.maxabs_x.fit_transform(train_Xt)
+            test_Xt = self.maxabs_x.transform(test_Xt)
+            train_yt = self.maxabs_y.fit_transform(train_yt.reshape(-1, 1)).ravel()
+
         if test_len <= 10:
             retrain_window = 1
         elif test_len <= 50:
              retrain_window = int(test_len / iteration) + 1
         else:
-            retrain_window = 10
+            retrain_window = 30
 
         fit_model = idx % retrain_window == 0
 
@@ -220,6 +238,9 @@ class BestModelSearch:
         if isinstance(prediction, (np.floating, float)):
             prediction = [prediction].ravel()
         
+        if model_name not in ['RandomForestRegressor']:
+            prediction = self.maxabs_y.inverse_transform(prediction.reshape(-1, 1)).ravel()
+
         log_pred = prediction
 
         if self.log_return and model_name != 'NaiveForecaster':
@@ -294,6 +315,7 @@ class BestModelSearch:
     # threshold_lag: combination of thresholds and lags
     # scoring: error measure
     def tuning(self, model_name, series, threshold_lag, scoring='symmetric_mean_absolute_percentage_error'):
+    # def tuning(self, model_name, series, threshold_lag, scoring='mean_squared_error'):
         p_metric = Performance_metrics()
 
         # best info of the model
@@ -360,11 +382,15 @@ class BestModelSearch:
             series = series.reshape(-1, 1)
 
         # save training set and testing set information
-        self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
-        logr_train_y, logr_test_y = train_test_split(np.diff(np.log(series.ravel())), test_size=self.test_size, shuffle=False)
-        self.record.insert(name=self.dataset_name, series=self.dataset, test_size=self.test_size, gap=self.gap)
-        self.record.insert(is_log_return=self.log_return, is_de_trend_season=self.detrend, threshold_lag=threshold_lag)
-        self.record.insert(train_y=self.train_y[:, -1].ravel(), test_y=self.test_y[:, -1].ravel(), logr_train_y=logr_train_y, logr_test_y=logr_test_y)
+        try:
+            self.train_y, self.test_y = train_test_split(series, test_size=self.test_size, shuffle=False)
+            # logr_train_y, logr_test_y = train_test_split(np.diff(np.log(series[:, -1].ravel())), test_size=self.test_size, shuffle=False)
+            self.record.insert(name=self.dataset_name, series=self.dataset, test_size=self.test_size, gap=self.gap)
+            self.record.insert(is_log_return=self.log_return, is_de_trend_season=self.detrend, threshold_lag=threshold_lag)
+            self.record.insert(train_y=self.train_y[:, -1].ravel(), test_y=self.test_y[:, -1].ravel())
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            logger.error(f'({exc_tb.tb_lineno}) {e}')
 
         best_data = dict()
         for model_name in self.tuning_models:
@@ -399,8 +425,9 @@ class MultiWork:
 
     def feature_selection(self, dataset, k_best=15):
         import heapq
-        from sklearn import ensemble
+
         from lightgbm import LGBMRegressor
+        from sklearn import ensemble
 
         fea_dict = dict()
         data = dataset.to_numpy()
@@ -410,14 +437,15 @@ class MultiWork:
         for key, imp in zip(dataset.columns[:-1], model.feature_importances_):
             fea_dict[key] = imp
         k_keys_sorted = heapq.nlargest(k_best, fea_dict)
-        k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-69', 'f-59', 'f-48', 'f-58', 'f-76', 'f-33', 'f-122']
-        k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-68', 'f-19', 'f-20', 'f-113', 'f-65', 'f-121', 'f-52']
+        # k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-69', 'f-59', 'f-48', 'f-58', 'f-76', 'f-33', 'f-122']
+        # k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-68', 'f-19', 'f-20', 'f-113', 'f-65', 'f-121', 'f-52']
         
         k_keys_sorted = ['f-50', 'f-49', 'vwap', 'f-68', 'f-19', 'f-20', 'f-113', 'f-65', 'f-121', 'f-52', 'f-69', 'f-59', 'f-48', 'f-58', 'f-76', 'f-33', 'f-122']
-        k_keys_sorted = ['f-50', 'f-49', 'vwap']
+        # k_keys_sorted = ['f-50', 'f-49', 'vwap']
         logger.info(f'Selected Features: {k_keys_sorted}')
 
         useless_col = [col for col in dataset.columns[:-1] if col not in k_keys_sorted] + ['open', 'high', 'low']
+        # useless_col = [col for col in dataset.columns[:-1] if col not in k_keys_sorted]
 
         dataset.drop(columns=useless_col, inplace=True)
         return dataset
@@ -437,9 +465,9 @@ class MultiWork:
         name, dataset = dataset_item
         # dataset = dataset.iloc[:, -5:]
         if isinstance(dataset, pd.DataFrame):
-            dataset = self.feature_selection(dataset)
-            dataset.iloc[:, -1] = pd.Series(range(1, 1216))
-            print(dataset)
+            dataset = self.feature_selection(dataset, k_best=len(dataset.columns))
+            # dataset.iloc[:, -1] = pd.Series(range(1, 1216))
+            print(dataset.iloc[:10])
 
         # determine the size of test set
         if len(dataset) > 200:
@@ -515,8 +543,9 @@ if __name__ == '__main__':
         args.lags = [1, 12]
         # args.lags = [12]
         # args.thresholds = [0.5]
-        # args.thresholds = ['haar', 'db1', 'db2', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
-        args.thresholds = ['db4', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
+        # args.thresholds = ['haar', 'db7', 'db8', 'db19', 'db20', 'coif2', 'coif3', 'coif9']
+        args.thresholds = ['haar', 'db7', 'db8', 'db19', 'db20']
+        # args.thresholds = ['db4', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
         # args.thresholds = ['db4']
         args.worker = 2
         ignore_warn = True
@@ -525,7 +554,7 @@ if __name__ == '__main__':
         ignore_warn = True
 
     log_return = False
-    detrend = True
+    detrend = False
 
     logger.info(f'Models: {list(settings.regression_models.keys())+list(settings.forecasting_models.keys())}')
     logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}, Gap: {args.gap}, Log Return: {log_return}, Detrend & Seasonal: {detrend}')
