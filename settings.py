@@ -159,17 +159,19 @@ params = {
     },
 
     'RandomForestRegressor': {
-        'n_estimators': [10, 50, 100],
-        # 'max_features': ['auto', 'sqrt', 'log2'],
-        'ccp_alpha': [0.3, 0.6],
+        'n_estimators': [50, 100],
+        'max_features': [0.3, 1.0, 'sqrt'],
+        # 'ccp_alpha': [0.0, 0.3, 0.6],
         'bootstrap': [False],
+        'min_samples_leaf': [5],
     },
 
     'MLPRegressor': {
-        'hidden_layer_sizes': [(12, 6, 2, ), (12, 6, ), (20, 12, ), (12, ), (20, ), ],
+        # 'hidden_layer_sizes': [(12, 6, 2, ), (12, 6, ), (20, 12, ), (12, ), (20, ), ],
+        'hidden_layer_sizes': [(8, 4, 2, ), (4, 2, ), (8, 4, ), (4, ), (8, ), ],
         # 'alpha': [0, 0.001, 0.01, 0.1],
-        # 'activation': ['logistic', 'relu', 'tanh', 'identity'],
-        'activation': ['relu', 'tanh', 'identity'],
+        'activation': ['logistic', 'relu', 'tanh', 'identity'],
+        # 'activation': ['relu', 'tanh', 'identity'],
         # 'solver': ['lbfgs', 'adam', 'sgd'],
         'shuffle': [False],
         'max_iter': [500],
@@ -194,7 +196,7 @@ params = {
     },
     'AutoETS': {
         'auto': [True],
-        'sp': [1, 12], # monthly
+        # 'sp': [1, 12], # monthly
         # 'sp': [7], # daily
     },
     'NaiveForecaster': {

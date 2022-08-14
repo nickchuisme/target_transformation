@@ -111,20 +111,10 @@ class BestModelSearch:
 
                 Xt = np.array(data_transformed)[:, :-1 * horizon]
                 yt = np.array(data_transformed)[:, -1 * horizon:]
-
-                # X = np.array(data)[:, :lags]
-                # y = np.array(data)[:, lags:]
-
-                # Xt = np.array(data_transformed)[:, :lags]
-                # yt = np.array(data_transformed)[:, lags:]
             else:
                 X, Xt = [], []
                 y = series.reshape(-1, 1)
                 yt = series_transformed.reshape(-1, 1)
-            # for a, b, c in zip(Xt, yt, y):
-            #     print(a, b, c)
-            # print(series)
-            # exit()
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -217,7 +207,7 @@ class BestModelSearch:
             prediction = prediction.values.ravel()
         if isinstance(prediction, (np.floating, float)):
             prediction = [prediction].ravel()
-        
+
         log_pred = prediction
 
         if self.log_return and model_name != 'NaiveForecaster':
@@ -422,8 +412,6 @@ class MultiWork:
 
         # hyperparameter tuning with/without transformation
         for label, thresholds in zip(['Untransformed', 'Transformed'], [[0.], self.thresholds]):
-            # if label == 'Untransformed':
-            #     continue
             try:
                 # generate combinations of lags and thresholds
                 threshold_lag = self.gen_hyperparams(lags=self.lags, horizons=[1], thresholds=thresholds)
@@ -470,7 +458,7 @@ if __name__ == '__main__':
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
-    parser.add_argument("--data_num", help="number of data", type=int, default=260)
+    parser.add_argument("--data_num", help="number of data", type=int, default=150)
     parser.add_argument("--data_length", help="minimum length of data", type=int, default=100)
     parser.add_argument("--test", help="test setting", action="store_true")
     args = parser.parse_args()
@@ -479,11 +467,9 @@ if __name__ == '__main__':
     if args.test:
         args.lags = [1, 12]
         # args.lags = [12]
-        # args.thresholds = [0.5]
-        # args.thresholds = ['haar', 'db1', 'db2', 'db8', 'sym4', 'sym8', 'coif1', 'coif3']
-        args.thresholds = ['db5', 'db6', 'db19', 'db20', 'coif2', 'coif3']
+        args.thresholds = ['haar', 'db5', 'db6', 'db19', 'db20', 'coif4', 'coif5']
         # args.thresholds = ['db4']
-        args.worker = 3
+        args.worker = 8
         ignore_warn = True
         logger.info('[TEST MODE]')
     else:
@@ -497,8 +483,6 @@ if __name__ == '__main__':
 
     # load time series
     datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
-    # name = list(range(51, 61)) + list(range(201, 211)) + list(range(1661, 1671)) + list(range(2121, 2131)) + list(range(3621, 3631))
-    # name = [f'D{n}' for n in name]
     # datasets = load_m4_data(min_length=args.data_length, max_length=1500, n_set=args.data_num, freq='Daily', name=name)
 
     mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, gap=args.gap, log_return=log_return, detrend=detrend, worker_num=args.worker, warning_suppressing=ignore_warn)

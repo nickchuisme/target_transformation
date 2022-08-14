@@ -82,7 +82,7 @@ class Transformation:
         self.series = np.array(series).ravel()
         return self.series
 
-    def dwt(self, series, threshold=0.7, mode='smooth', wavelet='sym8', inverse=False, test=False):
+    def dwt(self, series, threshold=0.5, mode='smooth', wavelet='sym8', inverse=False, test=False):
         series = np.array(series).ravel()
         self.level = pywt.dwt_max_level(self.series_len, wavelet)
         coeffs = pywt.wavedec(data=series, wavelet=wavelet, mode=mode, level=self.level)
@@ -98,6 +98,7 @@ class Transformation:
         new_coeffs = []
         series = np.array(series).ravel()
         self.level = pywt.dwt_max_level(self.series_len, wavelet)
+        self.level = 1
 
         # decompose time series
         coeffs = pywt.wavedec(data=series, wavelet=wavelet, mode=mode, level=self.level)
@@ -109,9 +110,9 @@ class Transformation:
         new_coeffs.append(i.tolist())
 
         # reconstruct cD
-        for id, i in enumerate(coeffs[1:]):
+        for idx, i in enumerate(coeffs[1:]):
             i = pywt.threshold(i, value=threshold, mode="hard")
-            i = pywt.upcoef('d', i, wavelet, level=len(coeffs[1:])-id, take=len(series))
+            i = pywt.upcoef('d', i, wavelet, level=len(coeffs[1:])-idx, take=len(series))
 
             ## white noise test, h0 = white noise
             # p_value = acorr_ljungbox(i, lags=[12], return_df=True)['lb_pvalue'].values[0] 

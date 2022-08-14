@@ -35,7 +35,7 @@ def load_m3_data(min_length=100, n_set=5):
     datasets = dict()
     data = load_m3monthly()
     unique_keys = data['key'].unique().tolist()
-    n_set = np.minimum(len(unique_keys), n_set)
+    n_set = np.minimum(len(unique_keys)-1, n_set)
     unique_keys = np.random.choice(unique_keys, size=n_set, replace=False)
 
     logger.info('Loading M3 dataset')
@@ -113,7 +113,7 @@ class Performance_metrics:
         self.predict_y = np.array(predict_y).ravel()
 
         self.estimators = {
-            # 'explained_variance_score': metrics.explained_variance_score,
+            'explained_variance_score': metrics.explained_variance_score,
             'max_error': metrics.max_error,
             'mean_absolute_error': metrics.mean_absolute_error,
             'mean_squared_error': metrics.mean_squared_error,
@@ -132,7 +132,7 @@ class Performance_metrics:
         for estimator in self.estimators.keys():
             try:
                 score = self.estimators[estimator](self.true_y, self.predict_y)
-                self.scores[estimator] = round(score, 3)
+                self.scores[estimator] = round(score, 5)
             except Exception as e:
                 logger.warn(f'({model_name}:{estimator}): {e}')
                 self.scores[estimator] = '-'
@@ -146,7 +146,7 @@ class Performance_metrics:
         else:
             for k, v in self.scores.items():
                 try:
-                    logger.debug(f'{k}: {v:.3f}')
+                    logger.debug(f'{k}: {v:.5f}')
                 except:
                     logger.debug(f'{k}: {v}')
         # logger.debug('\n')
@@ -292,7 +292,7 @@ class DeTrendSeason:
         # Note that the statistical benchmarks, implemented in R, use the same seasonality test, but with ACF1 being squared
         # This difference between the two scripts was mentioned after the end of the competition and, therefore, no changes have been made 
         # to the existing code so that the results of the original submissions are reproducible
-        s = self.acf(original_ts, 1)
+        s = self.acf(original_ts, 1) ** 2
         for i in range(2, ppy):
             s = s + (self.acf(original_ts, i) ** 2)
 
