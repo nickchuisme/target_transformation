@@ -1,9 +1,9 @@
 ## Target transformation
+The aim is to investigate the forecasting performance of target transformation by comparing how models perform when trained on the untransformed and transformed time series.
 
-1. Run the experiment by applying transformation on the target series to anticipate improving the forecasting performance.
-2. Analyse the experiment results from a saved JSON file.
+The discrete wavelet transform (DWT) is applied to the time series data for each candidate model, such as Elastic Net (EN), Support Vector Regressor (SVR), K-Nearest Neighbours (KNN), Random Forest (RF), Multi-layer Perceptron (MLP), and ETS.
 
-### Execution:
+### Execution
 <!-- for testing:
 - lags: 1, 12
 - wavelets: haar, db5, db6, db19, db20, coif4, coif5
