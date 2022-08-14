@@ -454,7 +454,8 @@ class MultiWork:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--thresholds", help="thresholds excludes zero", nargs="*", type=float, default=[0.05])
+    # parser.add_argument("--thresholds", help="thresholds excludes zero", nargs="*", type=float, default=[0.05])
+    parser.add_argument("--wavelets", help="wavelets", nargs="*", default=['haar', 'db5', 'db6', 'db19', 'db20', 'coif4', 'coif5'])
     parser.add_argument("--lags", help="lags", nargs="*", type=int, default=list(range(1, 6)))
     parser.add_argument("--gap", help="number of gap", type=int, default=0)
     parser.add_argument("--worker", help="number of worker", type=int, default=30)
@@ -467,8 +468,8 @@ if __name__ == '__main__':
     if args.test:
         args.lags = [1, 12]
         # args.lags = [12]
-        args.thresholds = ['haar', 'db5', 'db6', 'db19', 'db20', 'coif4', 'coif5']
-        # args.thresholds = ['db4']
+        args.wavelets = ['haar', 'db5', 'db6', 'db19', 'db20', 'coif4', 'coif5']
+        # args.wavelets = ['db4']
         args.worker = 8
         ignore_warn = True
         logger.info('[TEST MODE]')
@@ -479,11 +480,11 @@ if __name__ == '__main__':
     detrend = False
 
     logger.info(f'Models: {list(settings.regression_models.keys())+list(settings.forecasting_models.keys())}')
-    logger.info(f'Lags: {args.lags}, Thresholds: {args.thresholds}, Gap: {args.gap}, Log Return: {log_return}, Detrend & Seasonal: {detrend}')
+    logger.info(f'Lags: {args.lags}, Wavelets: {args.wavelets}, Gap: {args.gap}, Log Return: {log_return}, Detrend & Seasonal: {detrend}')
 
     # load time series
     datasets = load_m3_data(min_length=args.data_length, n_set=args.data_num)
     # datasets = load_m4_data(min_length=args.data_length, max_length=1500, n_set=args.data_num, freq='Daily', name=name)
 
-    mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.thresholds, gap=args.gap, log_return=log_return, detrend=detrend, worker_num=args.worker, warning_suppressing=ignore_warn)
+    mw = MultiWork(dataset=datasets, lags=args.lags, thresholds=args.wavelets, gap=args.gap, log_return=log_return, detrend=detrend, worker_num=args.worker, warning_suppressing=ignore_warn)
     mw.run()
