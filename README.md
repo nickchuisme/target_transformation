@@ -4,15 +4,15 @@
 2. Analyse the experiment results from a saved JSON file.
 
 ### Execution:
-for testing:
-- lags: 1, 3
-- thresholds: 0.04, 0.08
+<!-- for testing:
+- lags: 1, 12
+- wavelets: haar, db5, db6, db19, db20, coif4, coif5
 ```bash
 ./run_test.sh
-```
+``` -->
 execute entire experiment:
-- lags: 1, 2, 3, 4, 5
-- thresholds: np.arange(0.03, 0.33, 0.03)
+- lags: 1, 12
+- wavelets: haar, db5, db6, db19, db20, coif4, coif5
 ```bash
 ./run.sh
 ```
