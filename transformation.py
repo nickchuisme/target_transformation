@@ -3,85 +3,23 @@ import pandas as pd
 import pywt
 from PyEMD import EMD
 from scipy import stats
-from scipy.special import inv_boxcox
-from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler, StandardScaler
-from statsmodels.stats.diagnostic import acorr_ljungbox
 
 
 class Transformation:
 
-    def __init__(self, series=[], transformation_list=[]):
+    def __init__(self, series=[]):
         self.series = series
         self.series_len = len(series)
         self.level = None
-        self.boxcox_lambda = None
-        self.transformation_list = transformation_list
 
-        self.minmaxscaler = MinMaxScaler()
-        self.maxabsscaler = MaxAbsScaler()
-        self.standardscaler = StandardScaler()
+    # --------------------------------------------------
+    # series: entire time series
+    # threshold: ratio of a universal threshold
+    # mode: signal extention method
+    # wavelet: type of wavelet
 
-        self.trans_dict = {
-            'boxcox': self.boxcox,
-            'minmax': self.minmax, # [0, 1]
-            'maxabs': self.maxabs, # [-1, 1]
-            'standardise': self.standardise,
-            'dwt': self.dwt,
-        }
-        self.trans_names = self.trans_dict.keys()
-
-    def processing(self, series, inverse=False, test=False):
-        for trans in self.transformation_list:
-            if trans in self.trans_names:
-                series = self.trans_dict[trans](series=series, inverse=inverse, test=test)
-            else:
-                print(f'Not found {trans}')
-        return series
-
-    def boxcox(self, series, inverse=False, test=False):
-        series = np.array(series).ravel()
-        if inverse:
-            self.series = inv_boxcox(series, self.boxcox_lambda)
-        else:
-            self.series, self.boxcox_lambda = stats.boxcox(series)
-        return self.series
-
-    def minmax(self, series, inverse=False, test=False):
-        series = np.array(series).reshape(-1, 1)
-        if inverse:
-            series = self.minmaxscaler.inverse_transform(series)
-        else:
-            if test:
-                series = self.minmaxscaler.transform(series)
-            else:
-                series = self.minmaxscaler.fit_transform(series)
-        self.series = np.array(series).ravel()
-        return self.series
-
-    def maxabs(self, series, inverse=False, test=False):
-        series = np.array(series).reshape(-1, 1)
-        if inverse:
-            series = self.maxabsscaler.inverse_transform(series)
-        else:
-            if test:
-                series = self.maxabsscaler.transform(series)
-            else:
-                series = self.maxabsscaler.fit_transform(series)
-        self.series = np.array(series).ravel()
-        return self.series
-
-    def standardise(self, series, inverse=False, test=False):
-        series = np.array(series).reshape(-1, 1)
-        if inverse:
-            series = self.standardscaler.inverse_transform(series)
-        else:
-            if test:
-                series = self.standardscaler.transform(series)
-            else:
-                series = self.standardscaler.fit_transform(series)
-        self.series = np.array(series).ravel()
-        return self.series
-
+    # return:
+    # transformed time series
     def dwt(self, series, threshold=0.5, mode='smooth', wavelet='sym8', inverse=False, test=False):
         series = np.array(series).ravel()
         self.level = pywt.dwt_max_level(self.series_len, wavelet)
@@ -94,6 +32,14 @@ class Transformation:
             return self.series[:-1]
         return self.series
 
+    # --------------------------------------------------
+    # series: entire time series
+    # threshold: ratio of a universal threshold
+    # mode: signal extention method
+    # wavelet: type of wavelet
+
+    # return:
+    # a matrix of decomposed subseries, transformed time series
     def dwt_feature(self, series, threshold=1, mode='smooth', wavelet='sym8'):
         new_coeffs = []
         series = np.array(series).ravel()
@@ -114,16 +60,10 @@ class Transformation:
             i = pywt.threshold(i, value=threshold, mode="hard")
             i = pywt.upcoef('d', i, wavelet, level=len(coeffs[1:])-idx, take=len(series))
 
-            ## white noise test, h0 = white noise
-            # p_value = acorr_ljungbox(i, lags=[12], return_df=True)['lb_pvalue'].values[0] 
-            # if p_value < 0.05:
-            #     # print(id, 'not noise')
-            #     pass
-
             new_coeffs.append(i.tolist())
 
         return np.array(new_coeffs).T, np.sum(new_coeffs, axis=0)
-        return np.array(new_coeffs).T, self.dwt(series, threshold=threshold, wavelet=wavelet)
+        # return np.array(new_coeffs).T, self.dwt(series, threshold=threshold, wavelet=wavelet)
 
     def emd_transf(self, train_data):
         # generate IMFs from CEEMDAN decomposition
