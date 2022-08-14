@@ -167,12 +167,8 @@ params = {
     },
 
     'MLPRegressor': {
-        # 'hidden_layer_sizes': [(12, 6, 2, ), (12, 6, ), (20, 12, ), (12, ), (20, ), ],
         'hidden_layer_sizes': [(8, 4, 2, ), (4, 2, ), (8, 4, ), (4, ), (8, ), ],
-        # 'alpha': [0, 0.001, 0.01, 0.1],
         'activation': ['logistic', 'relu', 'tanh', 'identity'],
-        # 'activation': ['relu', 'tanh', 'identity'],
-        # 'solver': ['lbfgs', 'adam', 'sgd'],
         'shuffle': [False],
         'max_iter': [500],
         'learning_rate_init': [0.1],
@@ -196,8 +192,6 @@ params = {
     },
     'AutoETS': {
         'auto': [True],
-        # 'sp': [1, 12], # monthly
-        # 'sp': [7], # daily
     },
     'NaiveForecaster': {
         'strategy': ['last'],
