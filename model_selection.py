@@ -467,15 +467,14 @@ if __name__ == '__main__':
 
     if args.test:
         args.lags = [1, 12]
-        # args.lags = [12]
         args.wavelets = ['haar', 'db5', 'db6', 'db19', 'db20', 'coif4', 'coif5']
-        # args.wavelets = ['db4']
         args.worker = 8
         ignore_warn = True
         logger.info('[TEST MODE]')
     else:
         ignore_warn = True
 
+    # decide whether using preprocessing method
     log_return = False
     detrend = False
 
